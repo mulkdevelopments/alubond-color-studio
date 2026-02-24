@@ -81,9 +81,6 @@ export async function enhanceWithHuggingFace(
   }
 }
 
-/** Alternative: use a model that explicitly supports image-to-image. SD 2.1 is primarily text-to-image; we try img2img endpoint. */
-const HF_IMG2IMG_ALT = 'runwayml/stable-diffusion-inpainting'
-
 export async function enhanceWithHuggingFaceImg2Img(
   imageDataUrl: string,
   apiKey: string,

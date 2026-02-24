@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/buildingmodel.tsx","./src/components/palettepanel.tsx","./src/components/renderspanel.tsx","./src/components/toolbar.tsx","./src/components/viewer3d.tsx","./src/data/palettes.ts","./src/services/aienhance.ts","./src/utils/export.ts","./src/utils/falenhance.ts"],"version":"5.9.3"}

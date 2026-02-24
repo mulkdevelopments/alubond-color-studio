@@ -60,7 +60,7 @@ export function PalettePanel({
               }}
             >
               <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                {[p.primary, p.accent, p.frame, p.feature].map((c, i) => (
+                {[p.primary, p.accent, p.frame, p.feature].map((c) => (
                   <div
                     key={c.sku}
                     title={c.name}
