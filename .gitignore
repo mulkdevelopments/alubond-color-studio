@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Env (do not commit API keys)
+.env
+.env.local
+.env.*.local
+
+# Build
+dist/
+
+# Logs / cache
+*.log
+.npm
+.cache
+
+# Editor / OS
+.DS_Store
+Thumbs.db
