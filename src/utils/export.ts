@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import type { Palette } from '../types'
 
 export function downloadSnapshot(dataUrl: string, filename = 'alubond-snapshot.png') {
   const a = document.createElement('a')
@@ -19,8 +20,8 @@ export function generateSpecPdf(
   doc.text('Alubond Color Studio – Specification', 20, 20)
   doc.setFontSize(11)
   doc.text(`Palette: ${paletteName} (${paletteStyle})`, 20, 32)
-  doc.text(`Surfaces selected: ${selectedCount}`, 20, 40)
-  doc.text('Colors applied:', 20, 50)
+  doc.text(`Surfaces painted: ${selectedCount}`, 20, 40)
+  doc.text('Colours from library:', 20, 50)
   let y = 58
   colors.forEach((c) => {
     doc.setFontSize(10)

@@ -1,9 +1,9 @@
-import { Suspense, useMemo, useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, Environment, Stage, Html } from '@react-three/drei'
 import * as THREE from 'three'
 import { BuildingModel } from './BuildingModel'
-import type { SelectedSurface } from '../types'
+import type { MaterialState } from '../types'
 
 const DEFAULT_MODEL = '/models/building/building.gltf'
 
@@ -17,9 +17,9 @@ function CanvasRef({ onReady }: { onReady: (canvas: HTMLCanvasElement) => void }
 
 interface Viewer3DProps {
   modelUrl?: string
-  selectedSurfaces: SelectedSurface[]
-  onSelectionChange: (surfaces: SelectedSurface[]) => void
-  appliedMaterials?: Map<string, { color: number; metalness: number; roughness: number }>
+  selectionToolEnabled: boolean
+  onApplyColor: (uuid: string, currentState: MaterialState) => void
+  appliedMaterials?: Map<string, MaterialState>
   onCanvasReady?: (canvas: HTMLCanvasElement) => void
 }
 
@@ -33,14 +33,14 @@ function LoadingOverlay() {
 
 function Scene({
   modelUrl,
-  selectedIds,
-  onSelect,
+  selectionToolEnabled,
+  onApplyColor,
   appliedMaterials,
 }: {
   modelUrl: string
-  selectedIds: Set<string>
-  onSelect: (s: SelectedSurface[]) => void
-  appliedMaterials?: Map<string, { color: number; metalness: number; roughness: number }>
+  selectionToolEnabled: boolean
+  onApplyColor: (uuid: string, currentState: MaterialState) => void
+  appliedMaterials?: Map<string, MaterialState>
 }) {
   return (
     <>
@@ -60,17 +60,17 @@ function Scene({
       />
       <directionalLight position={[-15, 20, -10]} intensity={0.35} />
       <directionalLight position={[0, 30, 0]} intensity={0.25} />
-      <Environment preset="studio" />
+      <Environment preset="warehouse" />
       <Stage
-        intensity={0.4}
-        environment="studio"
+        intensity={0.5}
+        environment="warehouse"
         shadows={{ type: 'contact', opacity: 0.15, blur: 2 }}
         adjustCamera={1.2}
       >
         <BuildingModel
           url={modelUrl}
-          selectedIds={selectedIds}
-          onSelect={onSelect}
+          selectionToolEnabled={selectionToolEnabled}
+          onApplyColor={onApplyColor}
           appliedMaterials={appliedMaterials}
         />
       </Stage>
@@ -88,16 +88,11 @@ function Scene({
 
 export function Viewer3D({
   modelUrl = DEFAULT_MODEL,
-  selectedSurfaces,
-  onSelectionChange,
+  selectionToolEnabled,
+  onApplyColor,
   appliedMaterials,
   onCanvasReady,
 }: Viewer3DProps) {
-  const selectedIds = useMemo(
-    () => new Set(selectedSurfaces.map((s) => s.uuid)),
-    [selectedSurfaces]
-  )
-
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#fafafa' }}>
       <Canvas
@@ -119,8 +114,8 @@ export function Viewer3D({
           {onCanvasReady && <CanvasRef onReady={onCanvasReady} />}
           <Scene
             modelUrl={modelUrl}
-            selectedIds={selectedIds}
-            onSelect={onSelectionChange}
+            selectionToolEnabled={selectionToolEnabled}
+            onApplyColor={onApplyColor}
             appliedMaterials={appliedMaterials}
           />
         </Suspense>

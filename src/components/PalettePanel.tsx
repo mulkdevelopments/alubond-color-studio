@@ -1,89 +1,137 @@
-import type { Palette } from '../types'
+import { useMemo, useState } from 'react'
+import type { Palette, AlubondColor } from '../types'
+import type { Theme } from '../theme'
+import { getThemeTokens } from '../theme'
+import { palettes, libraryTabs, getColoursByStyle } from '../data/palettes'
 
 interface PalettePanelProps {
+  theme: Theme
   palettes: Palette[]
-  selectedPaletteId: string | null
-  selectedRole: 'primary' | 'accent' | 'frame' | 'feature'
-  onSelectPalette: (id: string | null) => void
-  onSelectRole: (role: 'primary' | 'accent' | 'frame' | 'feature') => void
+  selectedColor: AlubondColor | null
+  onSelectColor: (color: AlubondColor | null) => void
   compareMode: 'single' | 'split'
   comparePaletteId: string | null
   onComparePaletteId: (id: string | null) => void
 }
 
-const roles: Array<'primary' | 'accent' | 'frame' | 'feature'> = ['primary', 'accent', 'frame', 'feature']
-const roleLabels: Record<string, string> = { primary: 'Primary', accent: 'Accent', frame: 'Frame', feature: 'Feature' }
+function isSameColor(a: AlubondColor | null, b: AlubondColor | null): boolean {
+  if (!a || !b) return a === b
+  return a.sku === b.sku
+}
 
 export function PalettePanel({
-  palettes,
-  selectedPaletteId,
-  selectedRole,
-  onSelectPalette,
-  onSelectRole,
+  theme,
+  palettes: palettesList,
+  selectedColor,
+  onSelectColor,
   compareMode,
   comparePaletteId,
   onComparePaletteId,
 }: PalettePanelProps) {
+  const t = getThemeTokens(theme)
+  const [activeTab, setActiveTab] = useState<typeof libraryTabs[number]['id']>('Modern')
+
+  const coloursByStyle = useMemo(() => getColoursByStyle(palettesList), [palettesList])
+  const colours = coloursByStyle[activeTab] ?? []
+
+  const tabStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    fontSize: 12,
+    fontWeight: 500,
+    background: 'transparent',
+    border: 'none',
+    borderBottom: `3px solid transparent`,
+    color: t.textMuted,
+    cursor: 'pointer',
+  }
+  const tabActiveStyle: React.CSSProperties = {
+    ...tabStyle,
+    color: t.text,
+    borderBottomColor: t.primary,
+  }
+
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-      <section style={{ marginBottom: 20 }}>
-        <h3 style={{ margin: '0 0 8px', fontSize: 12, color: '#666', textTransform: 'uppercase' }}>
-          Apply to selection
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '12px 16px 0', borderBottom: `1px solid ${t.border}` }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: t.text }}>
+          Alubond facade library
         </h3>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-          {roles.map((r) => (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {libraryTabs.map((tab) => (
             <button
-              key={r}
+              key={tab.id}
               type="button"
-              onClick={() => onSelectRole(r)}
-              style={{
-                ...btnStyle,
-                background: selectedRole === r ? '#1a1a1a' : '#f5f5f5',
-                color: selectedRole === r ? '#fff' : '#1a1a1a',
-                borderColor: selectedRole === r ? '#1a1a1a' : '#e0e0e0',
-              }}
+              onClick={() => setActiveTab(tab.id)}
+              style={activeTab === tab.id ? tabActiveStyle : tabStyle}
             >
-              {roleLabels[r]}
+              {tab.label}
             </button>
           ))}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {palettes.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => onSelectPalette(selectedPaletteId === p.id ? null : p.id)}
-              style={{
-                ...cardStyle,
-                borderColor: selectedPaletteId === p.id ? '#1a1a1a' : '#e0e0e0',
-                background: selectedPaletteId === p.id ? '#f5f5f5' : '#ffffff',
-              }}
-            >
-              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                {[p.primary, p.accent, p.frame, p.feature].map((c) => (
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))',
+            gap: 10,
+          }}
+        >
+          {colours.map((color) => {
+            const selected = isSameColor(selectedColor, color)
+            return (
+              <button
+                key={color.sku}
+                type="button"
+                onClick={() => onSelectColor(selected ? null : color)}
+                style={{
+                  padding: 0,
+                  border: `2px solid ${selected ? t.selectedBorder : t.border}`,
+                  borderRadius: 8,
+                  background: t.cardBg,
+                  cursor: 'pointer',
+                  overflow: 'hidden',
+                  textAlign: 'center',
+                }}
+              >
+                <div
+                  style={{
+                    aspectRatio: '1',
+                    background: color.hex,
+                    boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.15)',
+                  }}
+                />
+                <div style={{ padding: '4px 6px 6px', minHeight: 36 }}>
+                  <div style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.2 }}>
+                    {color.sku}
+                  </div>
                   <div
-                    key={c.sku}
-                    title={c.name}
                     style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 4,
-                      background: c.hex,
-                      boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.2)',
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: t.text,
+                      lineHeight: 1.2,
+                      marginTop: 2,
                     }}
-                  />
-                ))}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a' }}>{p.name}</div>
-              <div style={{ fontSize: 11, color: '#666' }}>{p.style}</div>
-            </button>
-          ))}
+                    title={color.name}
+                  >
+                    {color.name.length > 12 ? color.name.slice(0, 11) + '…' : color.name}
+                  </div>
+                </div>
+              </button>
+            )
+          })}
         </div>
-      </section>
+        {colours.length === 0 && (
+          <div style={{ padding: 24, textAlign: 'center', color: t.textMuted, fontSize: 13 }}>
+            No colours in this category.
+          </div>
+        )}
+      </div>
       {compareMode === 'split' && (
-        <section>
-          <h3 style={{ margin: '0 0 8px', fontSize: 12, color: '#666', textTransform: 'uppercase' }}>
-            Compare with
+        <div style={{ padding: 12, borderTop: `1px solid ${t.border}` }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: 12, color: t.textMuted, textTransform: 'uppercase' }}>
+            Compare with palette
           </h3>
           <select
             value={comparePaletteId ?? ''}
@@ -91,41 +139,22 @@ export function PalettePanel({
             style={{
               width: '100%',
               padding: '8px 10px',
-              background: '#ffffff',
-              border: '1px solid #e0e0e0',
+              background: t.buttonBg,
+              border: `1px solid ${t.border}`,
               borderRadius: 6,
-              color: '#1a1a1a',
+              color: t.text,
               fontSize: 13,
             }}
           >
             <option value="">— None —</option>
-            {palettes.map((p) => (
+            {palettesList.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} ({p.style})
               </option>
             ))}
           </select>
-        </section>
+        </div>
       )}
     </div>
   )
-}
-
-const btnStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  fontSize: 11,
-  border: '1px solid #e0e0e0',
-  borderRadius: 6,
-  color: '#1a1a1a',
-  cursor: 'pointer',
-}
-
-const cardStyle: React.CSSProperties = {
-  padding: 12,
-  background: '#ffffff',
-  border: '2px solid #e0e0e0',
-  borderRadius: 8,
-  cursor: 'pointer',
-  textAlign: 'left',
-  color: '#1a1a1a',
 }

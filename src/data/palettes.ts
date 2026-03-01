@@ -1,4 +1,14 @@
-import type { Palette } from '../types'
+import type { Palette, AlubondColor } from '../types'
+
+/** Tab id matches Palette style; label for library UI */
+export const libraryTabs = [
+  { id: 'Modern' as const, label: 'Solid colours' },
+  { id: 'Metallic' as const, label: 'Metallic colours' },
+  { id: 'Wood' as const, label: 'Wood' },
+  { id: 'Anodise' as const, label: 'Anodise' },
+  { id: 'Patina' as const, label: 'Patina' },
+  { id: 'Fusion' as const, label: 'Fusion' },
+]
 
 export const palettes: Palette[] = [
   {
@@ -76,3 +86,33 @@ export const palettes: Palette[] = [
 ]
 
 export const styleCategories = ['Modern', 'Metallic', 'Fusion', 'Anodise', 'Wood', 'Patina'] as const
+
+/** All unique colours per style for library grid (dedupe by sku within each style) */
+export function getColoursByStyle(
+  palettesList: Palette[]
+): Record<Palette['style'], AlubondColor[]> {
+  const byStyle: Record<string, { list: AlubondColor[]; seen: Set<string> }> = {
+    Modern: { list: [], seen: new Set() },
+    Metallic: { list: [], seen: new Set() },
+    Fusion: { list: [], seen: new Set() },
+    Anodise: { list: [], seen: new Set() },
+    Wood: { list: [], seen: new Set() },
+    Patina: { list: [], seen: new Set() },
+  }
+  for (const p of palettesList) {
+    const entry = byStyle[p.style]
+    for (const colour of [p.primary, p.accent, p.frame, p.feature]) {
+      if (entry.seen.has(colour.sku)) continue
+      entry.seen.add(colour.sku)
+      entry.list.push(colour)
+    }
+  }
+  return {
+    Modern: byStyle.Modern.list,
+    Metallic: byStyle.Metallic.list,
+    Fusion: byStyle.Fusion.list,
+    Anodise: byStyle.Anodise.list,
+    Wood: byStyle.Wood.list,
+    Patina: byStyle.Patina.list,
+  }
+}

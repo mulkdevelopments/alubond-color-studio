@@ -32,3 +32,9 @@ export interface SelectedSurface {
 }
 
 export type PaletteRole = 'primary' | 'accent' | 'frame' | 'feature'
+
+export interface MaterialState {
+  color: number
+  metalness: number
+  roughness: number
+}

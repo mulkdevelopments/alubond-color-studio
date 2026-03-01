@@ -1,21 +1,21 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Group, Mesh, Material, MeshStandardMaterial } from 'three'
+import type { Group, Mesh, MeshStandardMaterial } from 'three'
 import type { GLTF } from 'three-stdlib'
-import type { SelectedSurface } from '../types'
+import type { MaterialState } from '../types'
 
 type GLTFResult = GLTF & {
   nodes: Record<string, Mesh>
-  materials: Record<string, Material>
+  materials: Record<string, THREE.Material>
 }
 
 interface BuildingModelProps {
   url: string
-  selectedIds: Set<string>
-  onSelect: (surfaces: SelectedSurface[]) => void
-  appliedMaterials?: Map<string, { color: number; metalness: number; roughness: number }>
+  selectionToolEnabled: boolean
+  onApplyColor: (uuid: string, currentState: MaterialState) => void
+  appliedMaterials?: Map<string, MaterialState>
 }
 
 function traverseMeshes(node: THREE.Object3D, fn: (mesh: Mesh) => void) {
@@ -23,10 +23,31 @@ function traverseMeshes(node: THREE.Object3D, fn: (mesh: Mesh) => void) {
   node.children.forEach((c) => traverseMeshes(c, fn))
 }
 
-export function BuildingModel({ url, selectedIds, onSelect, appliedMaterials }: BuildingModelProps) {
+function getMaterialState(mat: MeshStandardMaterial): MaterialState {
+  return {
+    color: mat.color?.getHex?.() ?? 0x888888,
+    metalness: mat.metalness ?? 0,
+    roughness: mat.roughness ?? 0.7,
+  }
+}
+
+const METALLIC_ENV_INTENSITY = 1.6
+const METALLIC_THRESHOLD = 0.5
+
+export function BuildingModel({
+  url,
+  selectionToolEnabled,
+  onApplyColor,
+  appliedMaterials,
+}: BuildingModelProps) {
   const group = useRef<Group>(null)
   const { scene } = useGLTF(url) as GLTFResult
+  const { gl, scene: threeScene } = useThree()
   const [hovered, setHovered] = useState<string | null>(null)
+
+  useEffect(() => {
+    gl.domElement.style.cursor = selectionToolEnabled && hovered ? 'pointer' : 'default'
+  }, [selectionToolEnabled, hovered, gl])
 
   const clone = useRef<Group | null>(null)
   if (!clone.current) {
@@ -34,36 +55,18 @@ export function BuildingModel({ url, selectedIds, onSelect, appliedMaterials }: 
   }
   const cloned = clone.current
 
-  const collectSelectable = (): SelectedSurface[] => {
-    const out: SelectedSurface[] = []
-    traverseMeshes(cloned, (mesh) => {
-      if (!mesh.material) return
-      const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
-      const uuid = mesh.uuid
-      const std = mat as MeshStandardMaterial
-      out.push({
-        uuid,
-        name: mesh.name || uuid.slice(0, 8),
-        material: mat,
-        originalColor: std.color?.getHex?.(),
-        originalMetalness: std.metalness,
-        originalRoughness: std.roughness,
-      })
-    })
-    return out
-  }
-
   const handleClick = (e: { stopPropagation: () => void; object: THREE.Object3D }) => {
     e.stopPropagation()
+    if (!selectionToolEnabled) return
     const mesh = e.object as Mesh
-    const all = collectSelectable()
-    const existing = new Set(selectedIds)
-    if (existing.has(mesh.uuid)) existing.delete(mesh.uuid)
-    else existing.add(mesh.uuid)
-    onSelect(all.filter((s) => existing.has(s.uuid)))
+    const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as MeshStandardMaterial
+    if (!mat?.color) return
+    const currentState = getMaterialState(mat)
+    onApplyColor(mesh.uuid, currentState)
   }
 
   useFrame(() => {
+    const envMap = threeScene.environment ?? null
     traverseMeshes(cloned, (mesh) => {
       const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as MeshStandardMaterial
       if (!mat?.color) return
@@ -72,6 +75,12 @@ export function BuildingModel({ url, selectedIds, onSelect, appliedMaterials }: 
         mat.color.setHex(applied.color)
         mat.metalness = applied.metalness
         mat.roughness = applied.roughness
+        if (applied.metalness >= METALLIC_THRESHOLD && envMap) {
+          mat.envMap = envMap
+          mat.envMapIntensity = METALLIC_ENV_INTENSITY
+        } else {
+          mat.envMapIntensity = 1
+        }
       }
       const isHover = hovered === mesh.uuid
       if (isHover) mat.emissive?.setHex(0x222222)
