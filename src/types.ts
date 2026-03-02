@@ -37,4 +37,6 @@ export interface MaterialState {
   color: number
   metalness: number
   roughness: number
+  /** When 'wood', the viewer applies a wood-grain texture for a realistic look. */
+  finish?: FinishType
 }

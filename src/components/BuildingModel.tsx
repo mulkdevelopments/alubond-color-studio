@@ -34,6 +34,53 @@ function getMaterialState(mat: MeshStandardMaterial): MaterialState {
 const METALLIC_ENV_INTENSITY = 1.6
 const METALLIC_THRESHOLD = 0.5
 
+/** Creates a reusable wood-grain texture (neutral tones so material color tints it). */
+function createWoodGrainTexture(): THREE.CanvasTexture {
+  const size = 512
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  // Base: light warm neutral so oak/walnut/teak tint shows through
+  ctx.fillStyle = '#e5dccf'
+  ctx.fillRect(0, 0, size, size)
+  // Horizontal grain lines (main wood-grain look)
+  const lineCount = 120
+  for (let i = 0; i < lineCount; i++) {
+    const y = (i / lineCount) * size + (Math.random() - 0.5) * 6
+    const thickness = 0.4 + Math.random() * 1.4
+    const alpha = 0.12 + Math.random() * 0.22
+    ctx.fillStyle = `rgba(70,55,45,${alpha})`
+    ctx.fillRect(0, Math.floor(y), size, Math.max(1, thickness))
+  }
+  // Lighter streaks between grain (annual ring effect)
+  for (let x = 0; x < size; x += 3 + Math.floor(Math.random() * 6)) {
+    const g = 0.88 + Math.random() * 0.14
+    ctx.fillStyle = `rgb(${Math.floor(g * 230)},${Math.floor(g * 218)},${Math.floor(g * 200)})`
+    ctx.fillRect(x, 0, 2, size)
+  }
+  // Fine fibre noise
+  const imageData = ctx.getImageData(0, 0, size, size)
+  const data = imageData.data
+  for (let i = 0; i < data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 22
+    data[i] = Math.max(0, Math.min(255, data[i] + n))
+    data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + n))
+    data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + n))
+  }
+  ctx.putImageData(imageData, 0, 0)
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(3, 3)
+  return tex
+}
+
+let woodGrainTexture: THREE.CanvasTexture | null = null
+function getWoodGrainTexture(): THREE.CanvasTexture {
+  if (!woodGrainTexture) woodGrainTexture = createWoodGrainTexture()
+  return woodGrainTexture
+}
+
 export function BuildingModel({
   url,
   selectionToolEnabled,
@@ -67,6 +114,7 @@ export function BuildingModel({
 
   useFrame(() => {
     const envMap = threeScene.environment ?? null
+    const woodTex = getWoodGrainTexture()
     traverseMeshes(cloned, (mesh) => {
       const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as MeshStandardMaterial
       if (!mat?.color) return
@@ -75,6 +123,11 @@ export function BuildingModel({
         mat.color.setHex(applied.color)
         mat.metalness = applied.metalness
         mat.roughness = applied.roughness
+        if (applied.finish === 'wood') {
+          mat.map = woodTex
+        } else {
+          mat.map = null
+        }
         if (applied.metalness >= METALLIC_THRESHOLD && envMap) {
           mat.envMap = envMap
           mat.envMapIntensity = METALLIC_ENV_INTENSITY
@@ -104,3 +157,4 @@ export function BuildingModel({
 }
 
 useGLTF.preload('/models/building/building.gltf')
+useGLTF.preload('/models/zaha_hadid/zaha_hadid.glb')

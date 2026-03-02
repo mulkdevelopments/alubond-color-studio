@@ -20,6 +20,76 @@ interface RendersPanelProps {
   onAiEnabledChange: (enabled: boolean) => void
 }
 
+function FullscreenImageDialog({
+  theme,
+  render,
+  onClose,
+}: {
+  theme: Theme
+  render: GeneratedRender
+  onClose: () => void
+}) {
+  const t = getThemeTokens(theme)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Image fullscreen"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1001,
+        background: 'rgba(0,0,0,0.92)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        boxSizing: 'border-box',
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        style={{
+          position: 'absolute',
+          top: 16,
+          right: 16,
+          width: 40,
+          height: 40,
+          borderRadius: 8,
+          border: 'none',
+          background: 'rgba(255,255,255,0.15)',
+          color: '#fff',
+          fontSize: 20,
+          cursor: 'pointer',
+          zIndex: 1,
+        }}
+      >
+        ✕
+      </button>
+      <img
+        src={render.dataUrl}
+        alt="Generated render"
+        style={{
+          maxWidth: '100%',
+          maxHeight: '100%',
+          objectFit: 'contain',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  )
+}
+
 function CompareDialog({
   theme,
   renderA,
@@ -222,6 +292,7 @@ export function RendersPanel({
   const t = getThemeTokens(theme)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [compareOpen, setCompareOpen] = useState(false)
+  const [fullscreenRender, setFullscreenRender] = useState<GeneratedRender | null>(null)
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -415,16 +486,16 @@ export function RendersPanel({
                 outline: 'none',
               }}
             >
-              <div
-                style={{
-                  aspectRatio: '4/3',
-                  background: t.imgPlaceholder,
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
+<div
+                  style={{
+                    aspectRatio: '4/3',
+                    background: t.imgPlaceholder,
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
                 {selected && (
                   <div
                     style={{
@@ -455,6 +526,11 @@ export function RendersPanel({
                     height: '100%',
                     objectFit: 'contain',
                     background: t.imgPlaceholder,
+                    cursor: 'pointer',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setFullscreenRender(render)
                   }}
                 />
                 <div
@@ -467,6 +543,17 @@ export function RendersPanel({
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setFullscreenRender(render)
+                    }}
+                    title="Fullscreen"
+                    style={iconBtnStyle}
+                  >
+                    ⛶
+                  </button>
                   <button
                     type="button"
                     onClick={() => onDownload(render)}
@@ -503,6 +590,13 @@ export function RendersPanel({
           renderA={selectedRenders[0]}
           renderB={selectedRenders[1]}
           onClose={() => setCompareOpen(false)}
+        />
+      )}
+      {fullscreenRender && (
+        <FullscreenImageDialog
+          theme={theme}
+          render={fullscreenRender}
+          onClose={() => setFullscreenRender(null)}
         />
       )}
     </aside>
