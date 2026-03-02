@@ -1,5 +1,4 @@
 import { jsPDF } from 'jspdf'
-import type { Palette } from '../types'
 
 export function downloadSnapshot(dataUrl: string, filename = 'alubond-snapshot.png') {
   const a = document.createElement('a')

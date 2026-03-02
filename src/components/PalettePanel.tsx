@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Palette, AlubondColor } from '../types'
 import type { Theme } from '../theme'
 import { getThemeTokens } from '../theme'
-import { palettes, libraryTabs, getColoursByStyle } from '../data/palettes'
+import { libraryTabs, getColoursByStyle } from '../data/palettes'
 
 interface PalettePanelProps {
   theme: Theme
