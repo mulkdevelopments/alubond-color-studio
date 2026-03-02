@@ -193,8 +193,6 @@ export default function App() {
   const [selectedModelId, setSelectedModelId] = useState<string>(SCENE_MODELS[0].id)
   const [selectionToolEnabled, setSelectionToolEnabled] = useState(false)
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
-  const [timeOfDay, setTimeOfDay] = useState(14)
-  const [environmentPreset, setEnvironmentPreset] = useState('studio')
   const [paintState, setPaintState] = useState<{
     colorOverrides: Map<string, MaterialState>
     undoStack: PaintAction[]
@@ -438,68 +436,7 @@ export default function App() {
               onApplyColor={handleApplyColor}
               appliedMaterials={appliedMaterials}
               onCanvasReady={(el) => { canvasRef.current = el }}
-              timeOfDay={timeOfDay}
-              environmentPreset={environmentPreset}
             />
-            <div
-              style={{
-                position: 'absolute',
-                top: 12,
-                left: 12,
-                zIndex: 10,
-                background: t.sidebarBg,
-                border: `1px solid ${t.border}`,
-                borderRadius: 12,
-                padding: '10px 14px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                minWidth: 200,
-              }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 600, color: t.textMuted, marginBottom: 8, letterSpacing: '0.04em' }}>
-                R&D — LIGHTING LAB
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                <label style={{ display: 'block', fontSize: 11, color: t.textMuted, marginBottom: 4 }}>
-                  Time of day {timeOfDay.toFixed(1)}h
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={24}
-                  step={0.5}
-                  value={timeOfDay}
-                  onChange={(e) => setTimeOfDay(Number(e.target.value))}
-                  style={{ width: '100%', accentColor: t.primary }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 11, color: t.textMuted, marginBottom: 4 }}>Environment</label>
-                <select
-                  value={environmentPreset}
-                  onChange={(e) => setEnvironmentPreset(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '6px 8px',
-                    fontSize: 12,
-                    background: t.cardBg,
-                    border: `1px solid ${t.border}`,
-                    borderRadius: 6,
-                    color: t.text,
-                  }}
-                >
-                  <option value="studio">Studio</option>
-                  <option value="dawn">Dawn</option>
-                  <option value="sunset">Sunset</option>
-                  <option value="park">Park (day)</option>
-                  <option value="city">City</option>
-                  <option value="warehouse">Warehouse</option>
-                  <option value="night">Night</option>
-                  <option value="forest">Forest</option>
-                  <option value="apartment">Apartment</option>
-                  <option value="lobby">Lobby</option>
-                </select>
-              </div>
-            </div>
             {compareMode === 'split' && (
               <div
                 style={{
