@@ -1,6 +1,6 @@
 import type { Theme } from '../theme'
 import { getThemeTokens, brand } from '../theme'
-import type { FacadeSettings, PanelTransform, PanelStyle, TypologyType } from './FacadeBuilding'
+import type { FacadeSettings, PanelTransform, TypologyType } from './FacadeBuilding'
 import type { AlubondColor } from '../types'
 
 /** Competitor-aligned order: square, triangle, 2 diagonals, diamond, X, vertical/horizontal line, 2 vert, 2 horiz */
@@ -21,7 +21,7 @@ function TypologyIcon({ type, active, color }: { type: TypologyType; active: boo
   const stroke = active ? color : 'currentColor'
   const size = 20
   const vb = 24
-  const common = { width: size, height: size, viewBox: `0 0 ${vb} ${vb}`, fill: 'none', stroke: stroke, strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }
+  const common = { width: size, height: size, viewBox: `0 0 ${vb} ${vb}`, fill: 'none' as const, stroke: stroke, strokeWidth: 1.5, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
   switch (type) {
     case 'square':
       return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="0.5" /></svg>
@@ -103,12 +103,6 @@ interface FacadeControlsProps {
   layout?: 'horizontal' | 'vertical'
 }
 
-const STYLES: { value: PanelStyle; label: string }[] = [
-  { value: 'landscape', label: 'Landscape' },
-  { value: 'portrait', label: 'Portrait' },
-  { value: 'square', label: 'Square' },
-]
-
 const TRANSFORMS: { value: PanelTransform; label: string }[] = [
   { value: 'flat', label: 'Flat' },
   { value: 'alternate', label: 'Alternate' },
@@ -171,7 +165,7 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
     isVertical ? null : <div style={{ width: 1, alignSelf: 'stretch', background: t.border, margin: '4px 0' }} />
   )
 
-  const typologyBtn = (t: TypologyType): React.CSSProperties => ({
+  const typologyBtn = (typ: TypologyType): React.CSSProperties => ({
     width: 32,
     height: 32,
     padding: 0,
@@ -179,9 +173,9 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8,
-    border: `1px solid ${settings.typology === t ? brand.orange : t.border}`,
-    background: settings.typology === t ? brand.orange : 'transparent',
-    color: settings.typology === t ? '#fff' : t.textMuted,
+    border: `1px solid ${settings.typology === typ ? brand.orange : t.border}`,
+    background: settings.typology === typ ? brand.orange : 'transparent',
+    color: settings.typology === typ ? '#fff' : t.textMuted,
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   })

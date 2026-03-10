@@ -427,8 +427,8 @@ export function FacadeBuilding({
       if (applied) {
         const isWood = applied.finish === 'wood' && applied.woodPanelId
         const isPatina = applied.finish === 'patina' && applied.patinaPanelId
-        const woodTex = isWood ? woodCache.get(applied.woodPanelId) : null
-        const patinaTex = isPatina ? patinaCache.get(applied.patinaPanelId) : null
+        const woodTex = isWood && applied.woodPanelId ? woodCache.get(applied.woodPanelId) : null
+        const patinaTex = isPatina && applied.patinaPanelId ? patinaCache.get(applied.patinaPanelId) : null
         const panelTex = woodTex ?? patinaTex
         if ((isWood && woodTex) || (isPatina && patinaTex)) {
           mat.map = panelTex!
