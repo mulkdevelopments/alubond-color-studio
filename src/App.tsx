@@ -1,12 +1,19 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect, lazy, Suspense } from 'react'
 import { Viewer3D } from './components/Viewer3D'
+import { FacadeViewer } from './components/FacadeViewer'
+import { FacadeControls } from './components/FacadeControls'
+import type { FacadeSettings } from './components/FacadeBuilding'
 import { PalettePanel } from './components/PalettePanel'
-import { AppHeader } from './components/AppHeader'
+import { WorkspaceLayout } from './components/WorkspaceLayout'
 import { RendersPanel, type GeneratedRender } from './components/RendersPanel'
-import { palettes } from './data/palettes'
+import { LandingPage, type AppMode } from './components/LandingPage'
+import { ImageStudio } from './components/ImageStudio'
+import { palettes, getFinishLabel } from './data/palettes'
+
+const IFCStudio = lazy(() => import('./components/IFCStudio').then((m) => ({ default: m.IFCStudio })))
 import { downloadSnapshot, generateSpecPdf } from './utils/export'
 import { enhanceImageWithNanobanana, DEFAULT_PROMPT, type NanobananaGenerateOptions } from './utils/nanobananaEnhance'
-import { getThemeTokens, type Theme } from './theme'
+import { getThemeTokens, brand, workspace, type Theme } from './theme'
 import type { MaterialState, AlubondColor } from './types'
 
 const ASPECT_RATIOS = ['1:1', '1:4', '1:8', '2:3', '3:2', '3:4', '4:1', '4:3', '4:5', '5:4', '8:1', '9:16', '16:9', '21:9', 'auto'] as const
@@ -155,12 +162,13 @@ function GenerateOptionsDialog({
             style={{
               padding: '10px 18px',
               fontSize: 14,
-              background: t.primary,
+              background: brand.orange,
               border: 'none',
-              borderRadius: 8,
+              borderRadius: 10,
               color: '#fff',
               cursor: 'pointer',
-              fontWeight: 500,
+              fontWeight: 600,
+              letterSpacing: '0.01em',
             }}
           >
             Generate
@@ -172,9 +180,20 @@ function GenerateOptionsDialog({
 }
 
 export const SCENE_MODELS = [
+  { id: 'facademaker', name: 'Facade Maker', url: '' },
   { id: 'building', name: 'Building', url: '/models/building/building.gltf' },
   { id: 'zaha_hadid', name: 'Zaha Hadid', url: '/models/zaha_hadid/zaha_hadid.glb' },
 ] as const
+
+const DEFAULT_FACADE_SETTINGS: FacadeSettings = {
+  columns: 7,
+  rows: 5,
+  style: 'landscape',
+  typology: 'square',
+  typologyParam: 3,
+  transform: 'flat',
+  tiltAngle: 15,
+}
 
 export type PaintAction = { uuid: string; prev: MaterialState | null; next: MaterialState }
 
@@ -183,6 +202,7 @@ function hexToNumber(hex: string): number {
 }
 
 export default function App() {
+  const [appMode, setAppMode] = useState<AppMode>('landing')
   const [selectedColor, setSelectedColor] = useState<AlubondColor | null>(null)
   const [compareMode, setCompareMode] = useState<'single' | 'split'>('single')
   const [comparePaletteId, setComparePaletteId] = useState<string | null>(null)
@@ -191,7 +211,9 @@ export default function App() {
   const [aiEnabled, setAiEnabled] = useState(false)
   const [theme, setTheme] = useState<Theme>('light')
   const [selectedModelId, setSelectedModelId] = useState<string>(SCENE_MODELS[0].id)
-  const [selectionToolEnabled, setSelectionToolEnabled] = useState(false)
+  const [facadeSettings, setFacadeSettings] = useState<FacadeSettings>(DEFAULT_FACADE_SETTINGS)
+  const facadePanelsRef = useRef<{ uuid: string; row: number }[]>([])
+  const selectionToolEnabled = false
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
   const [paintState, setPaintState] = useState<{
     colorOverrides: Map<string, MaterialState>
@@ -289,7 +311,7 @@ export default function App() {
 
   const handleExportPdf = useCallback(() => {
     const colors = selectedColor
-      ? [{ name: selectedColor.name, sku: selectedColor.sku, hex: selectedColor.hex, finish: selectedColor.finish }]
+      ? [{ name: selectedColor.name, sku: selectedColor.sku, hex: selectedColor.hex, finish: getFinishLabel(selectedColor) }]
       : []
     const snapshotDataUrl = canvasRef.current?.toDataURL('image/png')
     generateSpecPdf(
@@ -317,6 +339,8 @@ export default function App() {
         metalness: selectedColor.metalness ?? 0,
         roughness: selectedColor.roughness ?? 0.7,
         finish: selectedColor.finish,
+        ...(selectedColor.finish === 'wood' && selectedColor.woodPanelId ? { woodPanelId: selectedColor.woodPanelId } : {}),
+        ...(selectedColor.finish === 'patina' && selectedColor.patinaPanelId ? { patinaPanelId: selectedColor.patinaPanelId } : {}),
       }
       const action: PaintAction = { uuid, prev: currentState, next }
       setPaintState((prev) => ({
@@ -327,6 +351,56 @@ export default function App() {
     },
     [selectedColor]
   )
+
+  const applyColorToPanels = useCallback((panels: { uuid: string; row: number }[], color: AlubondColor) => {
+    const isFusionTwo = color.finish === 'fusion' && color.hexSecondary != null
+    const stateA: MaterialState = {
+      color: hexToNumber(color.hex),
+      metalness: color.metalness ?? 0,
+      roughness: color.roughness ?? 0.7,
+      finish: color.finish,
+      ...(color.finish === 'wood' && color.woodPanelId ? { woodPanelId: color.woodPanelId } : {}),
+      ...(color.finish === 'patina' && color.patinaPanelId ? { patinaPanelId: color.patinaPanelId } : {}),
+    }
+    const stateB: MaterialState = isFusionTwo
+      ? {
+          color: hexToNumber(color.hexSecondary!),
+          metalness: color.metalnessSecondary ?? color.metalness ?? 0,
+          roughness: color.roughnessSecondary ?? color.roughness ?? 0.7,
+          finish: color.finish,
+        }
+      : stateA
+    setPaintState((prev) => {
+      const overrides = new Map(prev.colorOverrides)
+      for (const { uuid, row } of panels) {
+        const next = isFusionTwo && row % 2 === 1 ? stateB : stateA
+        overrides.set(uuid, next)
+      }
+      return { colorOverrides: overrides, undoStack: prev.undoStack, redoStack: [] }
+    })
+  }, [])
+
+  const handleApplyAllPanels = useCallback(() => {
+    if (!selectedColor) return
+    applyColorToPanels(facadePanelsRef.current, selectedColor)
+  }, [selectedColor, applyColorToPanels])
+
+  const handlePanelsReady = useCallback(
+    (panels: { uuid: string; row: number }[]) => {
+      facadePanelsRef.current = panels
+      if (selectedColor) {
+        applyColorToPanels(panels, selectedColor)
+      }
+    },
+    [selectedColor, applyColorToPanels]
+  )
+
+  // When user clicks a colour in the palette (Facade Maker), apply it to all panels immediately
+  useEffect(() => {
+    if (selectedModelId === 'facademaker' && selectedColor) {
+      handleApplyAllPanels()
+    }
+  }, [selectedModelId, selectedColor, handleApplyAllPanels])
 
   const handleUndo = useCallback(() => {
     setPaintState((prev) => {
@@ -356,107 +430,69 @@ export default function App() {
     })
   }, [])
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      <AppHeader
+  if (appMode === 'landing') {
+    return <LandingPage onSelectMode={setAppMode} />
+  }
+
+  if (appMode === 'image') {
+    return (
+      <ImageStudio
         theme={theme}
+        onBack={() => setAppMode('landing')}
         onThemeToggle={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
-        selectionToolEnabled={selectionToolEnabled}
-        onSelectionToolChange={setSelectionToolEnabled}
-        paintedCount={colorOverrides.size}
-        canUndo={undoStack.length > 0}
-        canRedo={redoStack.length > 0}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        compareMode={compareMode}
-        onCompareModeChange={setCompareMode}
-        onSnapshot={handleSnapshot}
-        onExportPdf={handleExportPdf}
       />
-      <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
-        <aside
-          style={{
-            width: 320,
-            minWidth: 280,
-            background: t.sidebarBg,
-            borderRight: `1px solid ${t.border}`,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          <PalettePanel
-            theme={theme}
-            palettes={palettes}
-            selectedColor={selectedColor}
-            onSelectColor={setSelectedColor}
-            comparePaletteId={comparePaletteId}
-            onComparePaletteId={setComparePaletteId}
-            compareMode={compareMode}
-          />
-        </aside>
-        <main style={{ flex: 1, position: 'relative', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          <div
-            style={{
-              flexShrink: 0,
-              display: 'flex',
-              gap: 0,
-              padding: '8px 12px',
-              borderBottom: `1px solid ${t.border}`,
-              background: t.sidebarBg,
-            }}
-          >
-            {SCENE_MODELS.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => handleModelChange(m.id)}
-                style={{
-                  padding: '8px 16px',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  background: selectedModelId === m.id ? t.buttonBg : 'transparent',
-                  border: `1px solid ${selectedModelId === m.id ? t.border : 'transparent'}`,
-                  borderBottom: selectedModelId === m.id ? `1px solid ${t.buttonBg}` : 'none',
-                  borderRadius: 6,
-                  marginBottom: selectedModelId === m.id ? -1 : 0,
-                  color: selectedModelId === m.id ? t.text : t.textMuted,
-                  cursor: 'pointer',
-                }}
-              >
-                {m.name}
-              </button>
-            ))}
-          </div>
-          <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-            <Viewer3D
-              key={selectedModelId}
-              modelUrl={selectedModel.url}
-              selectionToolEnabled={selectionToolEnabled}
-              onApplyColor={handleApplyColor}
-              appliedMaterials={appliedMaterials}
-              onCanvasReady={(el) => { canvasRef.current = el }}
-            />
-            {compareMode === 'split' && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  pointerEvents: 'none',
-                  display: 'flex',
-                  alignItems: 'stretch',
-                }}
-              >
-                <div style={{ flex: 1, borderRight: `2px solid ${t.compareDivider}` }} />
-              </div>
-            )}
-          </div>
-        </main>
-        <RendersPanel
+    )
+  }
+
+  if (appMode === 'ifc') {
+    return (
+      <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: t.canvasBg, color: t.textMuted }}>Loading IFC Studio…</div>}>
+        <IFCStudio
           theme={theme}
+          onBack={() => setAppMode('landing')}
+          onThemeToggle={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+        />
+      </Suspense>
+    )
+  }
+
+  const workspaceTheme: Theme = 'workspace'
+
+  return (
+    <>
+    <WorkspaceLayout
+      workspaceOptions={SCENE_MODELS.map((m) => ({ id: m.id, name: m.name }))}
+      activeWorkspaceId={selectedModelId}
+      onWorkspaceChange={handleModelChange}
+      onBack={() => setAppMode('landing')}
+      onThemeToggle={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+      leftPanel={
+        <PalettePanel
+          theme={workspaceTheme}
+          palettes={palettes}
+          selectedColor={selectedColor}
+          onSelectColor={setSelectedColor}
+          comparePaletteId={comparePaletteId}
+          onComparePaletteId={setComparePaletteId}
+          compareMode={compareMode}
+        />
+      }
+      facadePanel={
+        selectedModelId === 'facademaker' ? (
+          <FacadeControls
+            theme={workspaceTheme}
+            settings={facadeSettings}
+            onChange={setFacadeSettings}
+            selectedColor={selectedColor}
+            onApplyAll={handleApplyAllPanels}
+            layout="vertical"
+          />
+        ) : undefined
+      }
+      showFacadeTab={selectedModelId === 'facademaker'}
+      rightPanel={
+        <RendersPanel
+          theme={workspaceTheme}
           renders={generatedRenders}
           onGenerate={handleGenerateRender}
           onDelete={handleDeleteRender}
@@ -465,14 +501,67 @@ export default function App() {
           aiEnabled={aiEnabled}
           onAiEnabledChange={setAiEnabled}
         />
+      }
+      canUndo={undoStack.length > 0}
+      canRedo={redoStack.length > 0}
+      onUndo={handleUndo}
+      onRedo={handleRedo}
+      compareMode={compareMode}
+      onCompareModeChange={setCompareMode}
+      onSnapshot={handleSnapshot}
+      onExportPdf={handleExportPdf}
+      paintedCount={colorOverrides.size}
+    >
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        {selectedModelId === 'facademaker' ? (
+          <FacadeViewer
+            key="facademaker"
+            settings={facadeSettings}
+            selectionToolEnabled={selectionToolEnabled}
+            onApplyColor={handleApplyColor}
+            appliedMaterials={appliedMaterials}
+            onCanvasReady={(el) => { canvasRef.current = el }}
+            onPanelsReady={handlePanelsReady}
+            canvasBackground={workspace.canvas}
+            transparentBackground
+          />
+        ) : (
+          <Viewer3D
+            key={selectedModelId}
+            modelUrl={selectedModel.url}
+            selectionToolEnabled={selectionToolEnabled}
+            onApplyColor={handleApplyColor}
+            appliedMaterials={appliedMaterials}
+            onCanvasReady={(el) => { canvasRef.current = el }}
+            canvasBackground={workspace.canvas}
+            transparentBackground
+          />
+        )}
+        {compareMode === 'split' && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              pointerEvents: 'none',
+              display: 'flex',
+              alignItems: 'stretch',
+            }}
+          >
+            <div style={{ flex: 1, borderRight: '2px solid rgba(255,255,255,0.1)' }} />
+          </div>
+        )}
       </div>
-      {showGenerateDialog && (
-        <GenerateOptionsDialog
-          theme={theme}
-          onClose={() => setShowGenerateDialog(false)}
-          onGenerate={handleConfirmAiGenerate}
-        />
-      )}
-    </div>
+    </WorkspaceLayout>
+    {showGenerateDialog && (
+      <GenerateOptionsDialog
+        theme={workspaceTheme}
+        onClose={() => setShowGenerateDialog(false)}
+        onGenerate={handleConfirmAiGenerate}
+      />
+    )}
+  </>
   )
 }

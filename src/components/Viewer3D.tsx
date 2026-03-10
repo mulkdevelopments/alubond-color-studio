@@ -21,6 +21,10 @@ interface Viewer3DProps {
   onApplyColor: (uuid: string, currentState: MaterialState) => void
   appliedMaterials?: Map<string, MaterialState>
   onCanvasReady?: (canvas: HTMLCanvasElement) => void
+  /** Background color for canvas (e.g. workspace dark #1A1A1A) */
+  canvasBackground?: string
+  /** When true, canvas clears with transparency so parent gradient shows through */
+  transparentBackground?: boolean
 }
 
 function LoadingOverlay() {
@@ -86,28 +90,44 @@ function Scene({
   )
 }
 
+const DEFAULT_BG = '#fafafa'
+
 export function Viewer3D({
   modelUrl = DEFAULT_MODEL,
   selectionToolEnabled,
   onApplyColor,
   appliedMaterials,
   onCanvasReady,
+  canvasBackground = DEFAULT_BG,
+  transparentBackground = false,
 }: Viewer3DProps) {
+  const bgHex = canvasBackground.startsWith('#') ? parseInt(canvasBackground.slice(1), 16) : 0xfafafa
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', background: '#fafafa' }}>
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        background: transparentBackground ? 'transparent' : canvasBackground,
+      }}
+    >
       <Canvas
         shadows
         camera={{ position: [40, 30, 40], fov: 45 }}
         gl={{
           antialias: true,
-          alpha: false,
+          alpha: transparentBackground,
           preserveDrawingBuffer: true,
         }}
         onCreated={({ gl }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping
           gl.toneMappingExposure = 1
           gl.outputColorSpace = THREE.SRGBColorSpace
-          gl.setClearColor(0xfafafa, 1)
+          if (transparentBackground) {
+            gl.setClearColor(0x000000, 0)
+          } else {
+            gl.setClearColor(bgHex, 1)
+          }
         }}
       >
         <Suspense fallback={<LoadingOverlay />}>
