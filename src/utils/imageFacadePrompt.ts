@@ -59,17 +59,21 @@ export function buildFacadePromptMinimal(color: AlubondColor | null): string {
   return (
     'Image edit: apply photorealistic aluminium composite panel facade only. ' +
     `Color ${hex}, ${name}, ${finish} finish. ` +
-    'Keep building shape and windows unchanged. Daylight, clear sky.'
+    'Keep building shape and windows unchanged. If the input has a reference strip on the side, omit it from the output—building only. Daylight, clear sky.'
   )
 }
 
 /**
- * Explain img2img payload: image 1 = building; image 2 = one composite sheet of panel swatches (API-friendly).
+ * Explain workspace capture + strict output framing: refs column must not appear in the generated image.
  */
 export function buildFacadeReferenceImageSuffix(hasTexturePanelReferences: boolean): string {
   if (!hasTexturePanelReferences) return ''
   return (
-    ' Image 1 is the building photograph. Image 2 is a single reference sheet showing official Alubond panel finishes (multiple swatches in one image). ' +
-    'Match their colours, gloss, grain, and patina on the façade. For fusion, alternate or blend across the panel grid in a high-end architectural rhythm. Photorealistic, daylight, clear sky.'
+    ' INPUT: One image with the real building on the left and a narrow Alubond reference strip on the right (sample panels; may show small labels). ' +
+    'Use that strip ONLY as material reference for colour, gloss, grain, and patina. It is NOT part of the site or architecture. ' +
+    ' OUTPUT (CRITICAL): Produce a single final photograph or render that shows ONLY the building with cladding applied. ' +
+    'Do NOT include the reference strip, swatches, sample tiles, or any "refs" / "Alubond refs" text in the output. ' +
+    'Crop mentally to the building: the result must look like a normal professional façade photo—same building, full bleed, no sidebar. ' +
+    'For fusion finishes, alternate or blend across the building panel grid only. Photorealistic, daylight, clear sky.'
   )
 }

@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useState } from 'react'
 import type { AlubondColor } from '../types'
 import type { Theme } from '../theme'
 import { getThemeTokens, brand } from '../theme'
@@ -6,6 +6,8 @@ import { getFinishLabel } from '../data/palettes'
 import { getPanelTextureUrl } from '../utils/panelTextureUrl'
 import { getFusionTextureCycle } from '../utils/fusionPanelCycle'
 import { playFilmAdvanceTick, unlockFilmAudio } from '../utils/filmStripSound'
+import { SkuBarcode } from './SkuBarcode'
+import { PaletteSkuDetailDialog } from './PaletteSkuDetailDialog'
 
 interface FilmStripColorRailProps {
   theme: Theme
@@ -74,6 +76,8 @@ export function FilmStripColorRail({
   const bottomBar = variant === 'bottomBar'
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastScrollLeft = useRef(0)
+  const [hoveredSku, setHoveredSku] = useState<string | null>(null)
+  const [detailColor, setDetailColor] = useState<AlubondColor | null>(null)
 
   const handleInteractionStart = useCallback(() => {
     unlockFilmAudio()
@@ -89,7 +93,7 @@ export function FilmStripColorRail({
     }
   }, [])
 
-  const renderSwatchInner = (color: AlubondColor) => {
+  const renderSwatchInner = (color: AlubondColor, showBarcodeHover: boolean) => {
     const textureCycle = getFusionTextureCycle(color)
     const fusionMultiTextures = !!(textureCycle && textureCycle.length >= 2)
     const fusionDual =
@@ -97,10 +101,13 @@ export function FilmStripColorRail({
       (fusionMultiTextures || color.hexSecondary != null || color.panelTextureSecondary != null)
     const dualPanel = fusionMultiTextures || !!(color.panelTexture && color.panelTextureSecondary)
     const r = dock ? 7 : 10
+    const barcodeH = dock ? 14 : 20
+    const barcodeW = dock ? 0.45 : 0.65
 
     return (
       <div
         style={{
+          position: 'relative',
           width: '100%',
           aspectRatio: '1',
           display: fusionDual ? 'flex' : 'block',
@@ -157,6 +164,45 @@ export function FilmStripColorRail({
         ) : !color.panelTexture ? (
           <div style={{ width: '100%', height: '100%', background: color.hex }} />
         ) : null}
+        <div
+          role="button"
+          tabIndex={0}
+          title="Barcode — click for full details"
+          aria-label={`Barcode and details for ${color.name}`}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            unlockFilmAudio()
+            setDetailColor(color)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              setDetailColor(color)
+            }
+          }}
+          style={{
+            position: 'absolute',
+            right: 2,
+            bottom: 2,
+            maxWidth: dock ? 52 : 72,
+            padding: dock ? '1px 2px' : '2px 4px',
+            background: 'rgba(255,255,255,0.96)',
+            borderRadius: 4,
+            boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
+            cursor: 'pointer',
+            lineHeight: 0,
+            transition: 'opacity 0.12s ease, transform 0.12s ease',
+            opacity: showBarcodeHover ? 1 : 0,
+            pointerEvents: showBarcodeHover ? 'auto' : 'none',
+            transform: showBarcodeHover ? 'scale(1)' : 'scale(0.92)',
+            zIndex: 3,
+            overflow: 'hidden',
+          }}
+        >
+          <SkuBarcode value={color.sku} height={barcodeH} barWidth={barcodeW} displayValue={false} />
+        </div>
       </div>
     )
   }
@@ -212,6 +258,10 @@ export function FilmStripColorRail({
                 <button
                   key={color.sku}
                   type="button"
+                  onMouseEnter={() => setHoveredSku(color.sku)}
+                  onMouseLeave={() => setHoveredSku(null)}
+                  onFocus={() => setHoveredSku(color.sku)}
+                  onBlur={() => setHoveredSku(null)}
                   onClick={() => {
                     unlockFilmAudio()
                     playFilmAdvanceTick()
@@ -233,7 +283,7 @@ export function FilmStripColorRail({
                     transform: selected ? 'translateY(-2px)' : 'none',
                   }}
                 >
-                  {renderSwatchInner(color)}
+                  {renderSwatchInner(color, hoveredSku === color.sku)}
                   <div
                     style={{
                       marginTop: dock ? 4 : 6,
@@ -290,13 +340,52 @@ export function FilmStripColorRail({
       </div>
   )
 
+  const detailDialog =
+    detailColor ? <PaletteSkuDetailDialog color={detailColor} onClose={() => setDetailColor(null)} /> : null
+
   if (dock) {
-    return <div style={{ flexShrink: 0, minWidth: 0, width: '100%' }}>{filmShell}</div>
+    return (
+      <>
+        <div style={{ flexShrink: 0, minWidth: 0, width: '100%' }}>{filmShell}</div>
+        {detailDialog}
+      </>
+    )
   }
 
   if (bottomBar) {
     return (
-      <div style={{ flexShrink: 0, width: '100%', minWidth: 0 }}>
+      <>
+        <div style={{ flexShrink: 0, width: '100%', minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: t.textMuted,
+              marginBottom: 8,
+              paddingLeft: 2,
+            }}
+          >
+            Colour library — film
+          </div>
+          {filmShell}
+        </div>
+        {detailDialog}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div
+        style={{
+          flexShrink: 0,
+          padding: '8px 10px 12px',
+          borderTop: `1px solid ${t.border}`,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100%)',
+        }}
+      >
         <div
           style={{
             fontSize: 9,
@@ -305,39 +394,14 @@ export function FilmStripColorRail({
             textTransform: 'uppercase',
             color: t.textMuted,
             marginBottom: 8,
-            paddingLeft: 2,
+            paddingLeft: 4,
           }}
         >
           Colour library — film
         </div>
         {filmShell}
       </div>
-    )
-  }
-
-  return (
-    <div
-      style={{
-        flexShrink: 0,
-        padding: '8px 10px 12px',
-        borderTop: `1px solid ${t.border}`,
-        background: 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100%)',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 9,
-          fontWeight: 700,
-          letterSpacing: '0.14em',
-          textTransform: 'uppercase',
-          color: t.textMuted,
-          marginBottom: 8,
-          paddingLeft: 4,
-        }}
-      >
-        Colour library — film
-      </div>
-      {filmShell}
-    </div>
+      {detailDialog}
+    </>
   )
 }

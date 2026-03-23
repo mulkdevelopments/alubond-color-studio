@@ -19,7 +19,8 @@ import {
   buildFacadePromptMinimal,
   buildFacadeReferenceImageSuffix,
 } from './utils/imageFacadePrompt'
-import { buildPaletteReferenceDataUrls } from './utils/paletteReferenceImages'
+import { captureWorkspacePreviewToDataUrl } from './utils/captureWorkspacePreview'
+import { colorUsesPanelTextureRefs } from './utils/paletteReferenceImages'
 import { downloadSnapshot, generateSpecPdf } from './utils/export'
 
 const IFCViewerLazy = lazy(() => import('./components/IFCViewer').then((m) => ({ default: m.IFCViewer })))
@@ -259,6 +260,7 @@ export default function App() {
   const selectionToolEnabled = false
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
   const [showImageGenerateDialog, setShowImageGenerateDialog] = useState(false)
+  const imageStudioPreviewRef = useRef<HTMLDivElement>(null)
   const [facadePaintState, setFacadePaintState] = useState<{
     colorOverrides: Map<string, MaterialState>
     undoStack: PaintAction[]
@@ -591,28 +593,43 @@ export default function App() {
 
   const handleConfirmImageStudioGenerate = useCallback(
     async (ui: ImageStudioGenerateUiOptions) => {
-      setShowImageGenerateDialog(false)
       if (!uploadedImage || !selectedColor) return
+
+      let imageForApi: string
+      try {
+        const el = imageStudioPreviewRef.current
+        if (!el) {
+          setImageError('Workspace preview is not ready. Wait for the image to appear, then try again.')
+          return
+        }
+        imageForApi = await captureWorkspacePreviewToDataUrl(el)
+      } catch (e) {
+        setImageError(
+          e instanceof Error ? e.message : 'Could not capture the workspace preview. Try a smaller window or reload.'
+        )
+        return
+      }
+
+      setShowImageGenerateDialog(false)
       setImageProcessing(true)
       setImageError(null)
       try {
-        const paletteReferenceDataUrls = await buildPaletteReferenceDataUrls(selectedColor)
-        const refSuffix = buildFacadeReferenceImageSuffix(paletteReferenceDataUrls.length > 0)
+        const hasTextureRefs = colorUsesPanelTextureRefs(selectedColor)
+        const refSuffix = buildFacadeReferenceImageSuffix(hasTextureRefs)
         let prompt = buildFacadePrompt(selectedColor) + refSuffix
         if (ui.customPrompt.trim()) {
           prompt += ` Additional creative direction: ${ui.customPrompt.trim()}`
         }
+        /** One composite image only — no multi-image imageUrls. */
         const nanoOpts: NanobananaGenerateOptions = {
           aspectRatio: ui.aspectRatio,
           resolution: ui.resolution,
           outputFormat: ui.outputFormat,
           googleSearch: ui.googleSearch,
-          maxSendDimension: 896,
+          maxSendDimension: 768,
           imageStudioMode: true,
-          maxPaletteReferences: 8,
-          paletteReferenceDataUrls,
         }
-        const run = (p: string) => enhanceImageWithNanobanana(uploadedImage, p, nanoOpts)
+        const run = (p: string) => enhanceImageWithNanobanana(imageForApi, p, nanoOpts)
         const extra = ui.customPrompt.trim()
           ? ` Additional creative direction: ${ui.customPrompt.trim()}`
           : ''
@@ -913,6 +930,7 @@ export default function App() {
             resultImage={resultImage}
             isProcessing={imageProcessing}
             selectedColor={selectedColor}
+            previewCaptureRef={imageStudioPreviewRef}
           />
         )}
       </div>

@@ -160,7 +160,14 @@ export function ImageStudioGenerateDialog({
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: panel.text }}>
             Generate façade · {selectedColor.name}
           </h3>
-         
+          <p style={{ margin: '10px 0 0', fontSize: 12, color: panel.muted, lineHeight: 1.55 }}>
+            Uses{' '}
+            <a href="https://docs.nanobananaapi.ai/" target="_blank" rel="noopener noreferrer" style={{ color: brand.orange }}>
+              NanoBanana
+            </a>
+            . We send <strong style={{ color: panel.text }}>one JPEG</strong>: a capture of the centre workspace preview (your
+            photo plus the reference strip when shown)—exactly what you see there, not a separate multi-image API payload.
+          </p>
         </div>
 
         <div
@@ -199,8 +206,8 @@ export function ImageStudioGenerateDialog({
             <div style={{ ...labelStyle, marginBottom: 8 }}>Palette</div>
             {!expectsRefs ? (
               <p style={{ margin: 0, fontSize: 12, color: panel.muted, lineHeight: 1.55 }}>
-                <strong style={{ color: panel.text }}>Solid / uniform finish</strong> — no swatch images are sent. Colour,
-                name, SKU, and finish are described in the text prompt only.
+                <strong style={{ color: panel.text }}>Solid / uniform finish</strong> — the capture is still your workspace
+                preview (photo only); colour, name, SKU, and finish are in the text prompt.
               </p>
             ) : refsLoading ? (
               <p style={{ margin: 0, fontSize: 12, color: panel.muted }}>Loading panel textures…</p>
@@ -211,7 +218,7 @@ export function ImageStudioGenerateDialog({
             ) : (
               <>
                 <p style={{ margin: '0 0 10px', fontSize: 11, color: panel.muted, lineHeight: 1.45 }}>
-                 
+                  Wait until these load so they appear in the centre preview before you generate (that frame is what we capture).
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                   {refUrls.map((url, i) => (
@@ -309,14 +316,15 @@ export function ImageStudioGenerateDialog({
           <button
             type="button"
             onClick={handleSubmit}
+            disabled={expectsRefs && refsLoading}
             style={{
               padding: '10px 18px',
               fontSize: 14,
-              background: brand.orange,
+              background: expectsRefs && refsLoading ? panel.fieldBorder : brand.orange,
               border: 'none',
               borderRadius: 10,
               color: '#fff',
-              cursor: 'pointer',
+              cursor: expectsRefs && refsLoading ? 'not-allowed' : 'pointer',
               fontWeight: 600,
               letterSpacing: '0.01em',
             }}

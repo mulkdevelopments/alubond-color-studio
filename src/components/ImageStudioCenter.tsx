@@ -1,6 +1,10 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties, type Ref } from 'react'
 import { getThemeTokens, brand, glassChrome, type Theme } from '../theme'
 import type { AlubondColor } from '../types'
+import {
+  buildPaletteReferenceDataUrls,
+  colorUsesPanelTextureRefs,
+} from '../utils/paletteReferenceImages'
 
 /** Image preview fills space between header and bottom film dock; keeps aspect ratio (no squashing). */
 export function ImageStudioCenter({
@@ -9,14 +13,42 @@ export function ImageStudioCenter({
   resultImage,
   isProcessing,
   selectedColor,
+  previewCaptureRef,
 }: {
   theme: Theme
   uploadedImage: string | null
   resultImage: string | null
   isProcessing: boolean
   selectedColor: AlubondColor | null
+  /** Set on the bordered preview (photo + refs) for NanoBanana — exact pixels you see. */
+  previewCaptureRef?: Ref<HTMLDivElement>
 }) {
   const t = getThemeTokens(theme)
+  const [paletteRefUrls, setPaletteRefUrls] = useState<string[]>([])
+  const [refsLoading, setRefsLoading] = useState(false)
+
+  const showPaletteSidebar =
+    !!uploadedImage && !!selectedColor && colorUsesPanelTextureRefs(selectedColor)
+
+  useEffect(() => {
+    if (!uploadedImage || !selectedColor || !colorUsesPanelTextureRefs(selectedColor)) {
+      setPaletteRefUrls([])
+      setRefsLoading(false)
+      return
+    }
+    let cancelled = false
+    setRefsLoading(true)
+    buildPaletteReferenceDataUrls(selectedColor).then((urls) => {
+      if (!cancelled) {
+        setPaletteRefUrls(urls)
+        setRefsLoading(false)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [uploadedImage, selectedColor])
+
   /** Slightly lighter than pure black so letterboxing matches the scene, not a harsh void */
   const imageMat = 'rgba(22, 22, 24, 0.92)'
 
@@ -58,6 +90,85 @@ export function ImageStudioCenter({
     )
   }
 
+  const sidebarW = 108
+  const paletteSidebar =
+    showPaletteSidebar && (paletteRefUrls.length > 0 || refsLoading) ? (
+      <div
+        style={{
+          width: sidebarW,
+          flexShrink: 0,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          borderLeft: `1px solid ${glassChrome.border}`,
+          background: '#141414',
+          borderRadius: '0 14px 14px 0',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 8,
+            fontWeight: 700,
+            color: 'rgba(255,255,255,0.45)',
+            letterSpacing: '0.08em',
+            padding: '8px 8px 4px',
+            flexShrink: 0,
+          }}
+        >
+          ALUBOND REFS
+        </div>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            padding: '4px 8px 10px',
+            boxSizing: 'border-box',
+          }}
+        >
+          {refsLoading ? (
+            <p style={{ margin: 0, fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>Loading…</p>
+          ) : (
+            paletteRefUrls.map((url, i) => (
+              <div
+                key={`${i}-${url.slice(0, 30)}`}
+                style={{
+                  flex: '0 0 auto',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: '#222',
+                  aspectRatio: '1',
+                  maxHeight: 88,
+                }}
+              >
+                <img
+                  src={url}
+                  alt={`Finish ${i + 1}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              </div>
+            ))
+          )}
+        </div>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 9,
+            color: 'rgba(255,255,255,0.35)',
+            padding: '0 8px 8px',
+            lineHeight: 1.35,
+          }}
+        >
+          Sent as one image with your photo
+        </p>
+      </div>
+    ) : null
+
   return (
     <div style={rootShell}>
       <div
@@ -93,64 +204,77 @@ export function ImageStudioCenter({
             }}
           >
             <div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, letterSpacing: '0.06em', flexShrink: 0 }}>
-              ORIGINAL
+              ORIGINAL{showPaletteSidebar ? ' + REFERENCES' : ''}
             </div>
             <div
+              ref={previewCaptureRef}
               style={{
                 flex: 1,
                 minHeight: 0,
-                position: 'relative',
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'stretch',
                 borderRadius: 14,
                 overflow: 'hidden',
                 border: `1px solid ${glassChrome.border}`,
                 background: imageMat,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
               }}
             >
-              <img
-                src={uploadedImage}
-                alt="Uploaded"
+              <div
                 style={{
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  width: 'auto',
-                  height: 'auto',
-                  objectFit: 'contain',
-                  display: 'block',
+                  flex: 1,
+                  minWidth: 0,
+                  minHeight: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
                 }}
-              />
-              {isProcessing && !resultImage && (
-                <div
+              >
+                <img
+                  src={uploadedImage}
+                  alt="Uploaded"
                   style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'rgba(0,0,0,0.6)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 12,
-                    backdropFilter: 'blur(4px)',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    width: 'auto',
+                    height: 'auto',
+                    objectFit: 'contain',
+                    display: 'block',
                   }}
-                >
+                />
+                {isProcessing && !resultImage && (
                   <div
                     style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      border: `3px solid ${glassChrome.border}`,
-                      borderTopColor: brand.orange,
-                      animation: 'imgStudioSpin 0.8s linear infinite',
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'rgba(0,0,0,0.6)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 12,
+                      backdropFilter: 'blur(4px)',
                     }}
-                  />
-                  <p style={{ margin: 0, fontSize: 13, color: '#e5e5e5', padding: '0 16px', textAlign: 'center' }}>
-                    Applying {selectedColor?.name ?? 'facade'}…
-                  </p>
-                  <style>{`@keyframes imgStudioSpin { to { transform: rotate(360deg); } }`}</style>
-                </div>
-              )}
+                  >
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: '50%',
+                        border: `3px solid ${glassChrome.border}`,
+                        borderTopColor: brand.orange,
+                        animation: 'imgStudioSpin 0.8s linear infinite',
+                      }}
+                    />
+                    <p style={{ margin: 0, fontSize: 13, color: '#e5e5e5', padding: '0 16px', textAlign: 'center' }}>
+                      Applying {selectedColor?.name ?? 'facade'}…
+                    </p>
+                    <style>{`@keyframes imgStudioSpin { to { transform: rotate(360deg); } }`}</style>
+                  </div>
+                )}
+              </div>
+              {paletteSidebar}
             </div>
           </div>
 
