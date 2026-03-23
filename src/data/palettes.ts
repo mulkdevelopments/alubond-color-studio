@@ -1,4 +1,5 @@
-import type { Palette, AlubondColor } from '../types'
+import type { Palette, AlubondColor, PaletteStyle, FinishType, FusionCombo, PanelTextureRef } from '../types'
+import { PANEL_TEXTURE_FILES } from './panelTextureInventory'
 
 /** Tab id matches Palette style; label for library UI */
 export const libraryTabs = [
@@ -7,8 +8,260 @@ export const libraryTabs = [
   { id: 'Wood' as const, label: 'Wood' },
   { id: 'Anodise' as const, label: 'Anodise' },
   { id: 'Patina' as const, label: 'Patina' },
+  { id: 'Brush' as const, label: 'Brush' },
+  { id: 'Concrete' as const, label: 'Concrete' },
+  { id: 'Najdi' as const, label: 'Najdi' },
+  { id: 'Prismatic' as const, label: 'Prismatic' },
+  { id: 'Sparkle' as const, label: 'Sparkle' },
+  { id: 'StoneMarble' as const, label: 'Stone & Marbles' },
+  { id: 'Texture' as const, label: 'Texture' },
   { id: 'Fusion' as const, label: 'Fusion' },
 ]
+
+const PANEL_STYLE_ROWS: Array<{
+  folder: string
+  style: PaletteStyle
+  collection: string
+  finish: FinishType
+  roughness: number
+  metalness: number
+  hex: string
+}> = [
+  { folder: 'wood', style: 'Wood', collection: 'Wood', finish: 'wood', roughness: 0.7, metalness: 0, hex: '#C4A574' },
+  { folder: 'patina', style: 'Patina', collection: 'Patina', finish: 'patina', roughness: 0.6, metalness: 0.5, hex: '#5a9c7a' },
+  { folder: 'anodise', style: 'Anodise', collection: 'Anodise', finish: 'anodise', roughness: 0.25, metalness: 0.95, hex: '#d4dce4' },
+  { folder: 'metalic', style: 'Metallic', collection: 'Metallic', finish: 'metallic', roughness: 0.4, metalness: 0.9, hex: '#c0c8d0' },
+  { folder: 'brush', style: 'Brush', collection: 'Brush', finish: 'matte', roughness: 0.8, metalness: 0, hex: '#a8a29e' },
+  { folder: 'concrete', style: 'Concrete', collection: 'Concrete', finish: 'matte', roughness: 0.9, metalness: 0, hex: '#78716c' },
+  { folder: 'najdi', style: 'Najdi', collection: 'Najdi', finish: 'matte', roughness: 0.75, metalness: 0, hex: '#d6d3d1' },
+  { folder: 'prismatic', style: 'Prismatic', collection: 'Prismatic', finish: 'matte', roughness: 0.5, metalness: 0.2, hex: '#e7e5e4' },
+  { folder: 'sparkle', style: 'Sparkle', collection: 'Sparkle', finish: 'metallic', roughness: 0.35, metalness: 0.85, hex: '#d1d5db' },
+  { folder: 'stone&marbles', style: 'StoneMarble', collection: 'Stone & Marbles', finish: 'matte', roughness: 0.75, metalness: 0, hex: '#e5e5e5' },
+  { folder: 'texture', style: 'Texture', collection: 'Texture', finish: 'matte', roughness: 0.8, metalness: 0, hex: '#9ca3af' },
+]
+
+function buildPanelTexturePalettes(): Palette[] {
+  const out: Palette[] = []
+  let pid = 0
+  for (const cfg of PANEL_STYLE_ROWS) {
+    const files = PANEL_TEXTURE_FILES[cfg.folder]
+    if (!files?.length) continue
+    for (const fileId of files) {
+      const suffix = fileId.replace(/^AB-SS-/, '')
+      const sku = `${cfg.collection} · ${fileId}`
+      const c: AlubondColor = {
+        sku,
+        name: `${cfg.collection} ${suffix}`,
+        collection: cfg.collection,
+        finish: cfg.finish,
+        hex: cfg.hex,
+        roughness: cfg.roughness,
+        metalness: cfg.metalness,
+        panelTexture: { folder: cfg.folder, fileId },
+      }
+      pid += 1
+      out.push({
+        id: `panel-${cfg.folder.replace(/[^a-z0-9]/gi, '-')}-${suffix}-${pid}`,
+        name: cfg.collection,
+        style: cfg.style,
+        primary: c,
+        accent: c,
+        frame: c,
+        feature: c,
+      })
+    }
+  }
+  return out
+}
+
+/** Curated two-panel fusions (row A / row B on facade). */
+const FUSION_PANEL_SETS: Array<{
+  name: string
+  fusionOf: [FusionCombo, FusionCombo]
+  a: PanelTextureRef
+  b: PanelTextureRef
+  hex: string
+  hexSecondary: string
+  roughness: number
+  metalness: number
+  roughnessSecondary: number
+  metalnessSecondary: number
+}> = [
+  {
+    name: 'Metallic + Anodise',
+    fusionOf: ['metallic', 'anodise'],
+    a: { folder: 'metalic', fileId: 'AB-SS-003' },
+    b: { folder: 'anodise', fileId: 'AB-SS-006' },
+    hex: '#c0c8d0',
+    hexSecondary: '#d4dce4',
+    roughness: 0.4,
+    metalness: 0.9,
+    roughnessSecondary: 0.25,
+    metalnessSecondary: 0.95,
+  },
+  {
+    name: 'Metallic + Anodise',
+    fusionOf: ['metallic', 'anodise'],
+    a: { folder: 'metalic', fileId: 'AB-SS-010' },
+    b: { folder: 'anodise', fileId: 'AB-SS-008' },
+    hex: '#94a3b8',
+    hexSecondary: '#d4dce4',
+    roughness: 0.42,
+    metalness: 0.88,
+    roughnessSecondary: 0.25,
+    metalnessSecondary: 0.95,
+  },
+  {
+    name: 'Wood + Metallic',
+    fusionOf: ['wood', 'metallic'],
+    a: { folder: 'wood', fileId: 'AB-SS-007' },
+    b: { folder: 'metalic', fileId: 'AB-SS-005' },
+    hex: '#c4a574',
+    hexSecondary: '#c0c8d0',
+    roughness: 0.7,
+    metalness: 0,
+    roughnessSecondary: 0.4,
+    metalnessSecondary: 0.9,
+  },
+  {
+    name: 'Wood + Metallic',
+    fusionOf: ['wood', 'metallic'],
+    a: { folder: 'wood', fileId: 'AB-SS-001' },
+    b: { folder: 'metalic', fileId: 'AB-SS-012' },
+    hex: '#c4a574',
+    hexSecondary: '#64748b',
+    roughness: 0.7,
+    metalness: 0,
+    roughnessSecondary: 0.38,
+    metalnessSecondary: 0.92,
+  },
+  {
+    name: 'Patina + Metallic',
+    fusionOf: ['patina', 'metallic'],
+    a: { folder: 'patina', fileId: 'AB-SS-001' },
+    b: { folder: 'metalic', fileId: 'AB-SS-009' },
+    hex: '#5a9c7a',
+    hexSecondary: '#b87333',
+    roughness: 0.6,
+    metalness: 0.5,
+    roughnessSecondary: 0.3,
+    metalnessSecondary: 0.95,
+  },
+  {
+    name: 'Patina + Metallic',
+    fusionOf: ['patina', 'metallic'],
+    a: { folder: 'patina', fileId: 'AB-SS-004' },
+    b: { folder: 'metalic', fileId: 'AB-SS-007' },
+    hex: '#5a9c7a',
+    hexSecondary: '#94a3b8',
+    roughness: 0.58,
+    metalness: 0.52,
+    roughnessSecondary: 0.4,
+    metalnessSecondary: 0.9,
+  },
+  {
+    name: 'Stone & Marbles + Texture',
+    fusionOf: ['matte', 'matte'],
+    a: { folder: 'stone&marbles', fileId: 'AB-SS-005' },
+    b: { folder: 'texture', fileId: 'AB-SS-006' },
+    hex: '#e5e5e5',
+    hexSecondary: '#9ca3af',
+    roughness: 0.75,
+    metalness: 0,
+    roughnessSecondary: 0.8,
+    metalnessSecondary: 0,
+  },
+  {
+    name: 'Concrete + Metallic',
+    fusionOf: ['matte', 'metallic'],
+    a: { folder: 'concrete', fileId: 'AB-SS-004' },
+    b: { folder: 'metalic', fileId: 'AB-SS-006' },
+    hex: '#78716c',
+    hexSecondary: '#94a3b8',
+    roughness: 0.9,
+    metalness: 0,
+    roughnessSecondary: 0.4,
+    metalnessSecondary: 0.9,
+  },
+  {
+    name: 'Brush + Anodise',
+    fusionOf: ['matte', 'anodise'],
+    a: { folder: 'brush', fileId: 'AB-SS-005' },
+    b: { folder: 'anodise', fileId: 'AB-SS-005' },
+    hex: '#a8a29e',
+    hexSecondary: '#d4dce4',
+    roughness: 0.8,
+    metalness: 0,
+    roughnessSecondary: 0.25,
+    metalnessSecondary: 0.95,
+  },
+  {
+    name: 'Sparkle + Anodise',
+    fusionOf: ['metallic', 'anodise'],
+    a: { folder: 'sparkle', fileId: 'AB-SS-006' },
+    b: { folder: 'anodise', fileId: 'AB-SS-007' },
+    hex: '#d1d5db',
+    hexSecondary: '#c5cbd4',
+    roughness: 0.35,
+    metalness: 0.85,
+    roughnessSecondary: 0.23,
+    metalnessSecondary: 0.97,
+  },
+  {
+    name: 'Prismatic + Metallic',
+    fusionOf: ['matte', 'metallic'],
+    a: { folder: 'prismatic', fileId: 'AB-SS-005' },
+    b: { folder: 'metalic', fileId: 'AB-SS-014' },
+    hex: '#e7e5e4',
+    hexSecondary: '#cbd5e1',
+    roughness: 0.5,
+    metalness: 0.2,
+    roughnessSecondary: 0.35,
+    metalnessSecondary: 0.92,
+  },
+  {
+    name: 'Najdi + Wood',
+    fusionOf: ['matte', 'wood'],
+    a: { folder: 'najdi', fileId: 'AB-SS-006' },
+    b: { folder: 'wood', fileId: 'AB-SS-003' },
+    hex: '#d6d3d1',
+    hexSecondary: '#c4a574',
+    roughness: 0.75,
+    metalness: 0,
+    roughnessSecondary: 0.7,
+    metalnessSecondary: 0,
+  },
+]
+
+function buildFusionPanelPalettes(): Palette[] {
+  return FUSION_PANEL_SETS.map((row, idx) => {
+    const sku = `Fusion · ${row.a.fileId} + ${row.b.fileId}`
+    const c: AlubondColor = {
+      sku,
+      name: row.name,
+      collection: 'Fusion',
+      finish: 'fusion',
+      fusionOf: row.fusionOf,
+      hex: row.hex,
+      hexSecondary: row.hexSecondary,
+      roughness: row.roughness,
+      metalness: row.metalness,
+      roughnessSecondary: row.roughnessSecondary,
+      metalnessSecondary: row.metalnessSecondary,
+      panelTexture: row.a,
+      panelTextureSecondary: row.b,
+    }
+    return {
+      id: `fusion-panel-${idx + 1}`,
+      name: 'Fusion',
+      style: 'Fusion' as const,
+      primary: c,
+      accent: c,
+      frame: c,
+      feature: c,
+    }
+  })
+}
 
 export const palettes: Palette[] = [
   // —— Modern (Solid colours) ——
@@ -84,166 +337,57 @@ export const palettes: Palette[] = [
     frame: { sku: 'M-803', name: 'Plum', collection: 'Modern', finish: 'matte', hex: '#6b21a8', roughness: 0.85, metalness: 0 },
     feature: { sku: 'M-804', name: 'Violet', collection: 'Modern', finish: 'matte', hex: '#7c3aed', roughness: 0.82, metalness: 0 },
   },
-  // —— Metallic ——
-  {
-    id: 'metallic-1',
-    name: 'Brushed Steel',
-    style: 'Metallic',
-    primary: { sku: 'MT-101', name: 'Brushed Aluminium', collection: 'Metallic', finish: 'metallic', hex: '#c0c8d0', roughness: 0.4, metalness: 0.9 },
-    accent: { sku: 'MT-102', name: 'Chrome Silver', collection: 'Metallic', finish: 'metallic', hex: '#e8ecf0', roughness: 0.2, metalness: 1 },
-    frame: { sku: 'MT-103', name: 'Gunmetal', collection: 'Metallic', finish: 'metallic', hex: '#2c3e50', roughness: 0.35, metalness: 0.95 },
-    feature: { sku: 'MT-104', name: 'Titanium', collection: 'Metallic', finish: 'metallic', hex: '#7f8c8d', roughness: 0.45, metalness: 0.85 },
-  },
-  {
-    id: 'metallic-2',
-    name: 'Copper Accent',
-    style: 'Metallic',
-    primary: { sku: 'MT-201', name: 'Warm Grey', collection: 'Metallic', finish: 'metallic', hex: '#95a5a6', roughness: 0.5, metalness: 0.7 },
-    accent: { sku: 'MT-202', name: 'Copper', collection: 'Metallic', finish: 'metallic', hex: '#b87333', roughness: 0.3, metalness: 0.95 },
-    frame: { sku: 'MT-203', name: 'Bronze', collection: 'Metallic', finish: 'metallic', hex: '#8b6914', roughness: 0.4, metalness: 0.9 },
-    feature: { sku: 'MT-204', name: 'Antique Brass', collection: 'Metallic', finish: 'metallic', hex: '#cd7f32', roughness: 0.45, metalness: 0.85 },
-  },
-  {
-    id: 'metallic-3',
-    name: 'Cool Metals',
-    style: 'Metallic',
-    primary: { sku: 'MT-301', name: 'Zinc', collection: 'Metallic', finish: 'metallic', hex: '#94a3b8', roughness: 0.38, metalness: 0.92 },
-    accent: { sku: 'MT-302', name: 'Pewter', collection: 'Metallic', finish: 'metallic', hex: '#64748b', roughness: 0.42, metalness: 0.88 },
-    frame: { sku: 'MT-303', name: 'Carbon', collection: 'Metallic', finish: 'metallic', hex: '#334155', roughness: 0.32, metalness: 0.96 },
-    feature: { sku: 'MT-304', name: 'Stainless', collection: 'Metallic', finish: 'metallic', hex: '#cbd5e1', roughness: 0.25, metalness: 0.98 },
-  },
-  {
-    id: 'metallic-4',
-    name: 'Gold & Rose',
-    style: 'Metallic',
-    primary: { sku: 'MT-401', name: 'Rose Gold', collection: 'Metallic', finish: 'metallic', hex: '#e8b4a0', roughness: 0.35, metalness: 0.9 },
-    accent: { sku: 'MT-402', name: 'Gold', collection: 'Metallic', finish: 'metallic', hex: '#d4af37', roughness: 0.28, metalness: 0.95 },
-    frame: { sku: 'MT-403', name: 'Champagne Metal', collection: 'Metallic', finish: 'metallic', hex: '#c9b896', roughness: 0.4, metalness: 0.88 },
-    feature: { sku: 'MT-404', name: 'Bronze Rose', collection: 'Metallic', finish: 'metallic', hex: '#a67c52', roughness: 0.42, metalness: 0.86 },
-  },
-  {
-    id: 'metallic-5',
-    name: 'Industrial',
-    style: 'Metallic',
-    primary: { sku: 'MT-501', name: 'Galvanised', collection: 'Metallic', finish: 'metallic', hex: '#a1a1aa', roughness: 0.5, metalness: 0.85 },
-    accent: { sku: 'MT-502', name: 'Cast Iron', collection: 'Metallic', finish: 'metallic', hex: '#3f3f46', roughness: 0.55, metalness: 0.9 },
-    frame: { sku: 'MT-503', name: 'Wrought Iron', collection: 'Metallic', finish: 'metallic', hex: '#52525b', roughness: 0.48, metalness: 0.88 },
-    feature: { sku: 'MT-504', name: 'Aluminium Satin', collection: 'Metallic', finish: 'metallic', hex: '#b4b4b8', roughness: 0.45, metalness: 0.9 },
-  },
-  // —— Anodise ——
-  {
-    id: 'anodise-1',
-    name: 'Clear Anodise',
-    style: 'Anodise',
-    primary: { sku: 'A-101', name: 'Clear Anodised', collection: 'Anodise', finish: 'anodise', hex: '#d4dce4', roughness: 0.25, metalness: 0.95 },
-    accent: { sku: 'A-102', name: 'Champagne', collection: 'Anodise', finish: 'anodise', hex: '#e8dcc8', roughness: 0.3, metalness: 0.9 },
-    frame: { sku: 'A-103', name: 'Black Anodised', collection: 'Anodise', finish: 'anodise', hex: '#2c2c2c', roughness: 0.2, metalness: 0.98 },
-    feature: { sku: 'A-104', name: 'Smoke', collection: 'Anodise', finish: 'anodise', hex: '#6b7280', roughness: 0.28, metalness: 0.92 },
-  },
-  {
-    id: 'anodise-2',
-    name: 'Coloured Anodise',
-    style: 'Anodise',
-    primary: { sku: 'A-201', name: 'Bronze Anodise', collection: 'Anodise', finish: 'anodise', hex: '#8b7355', roughness: 0.22, metalness: 0.96 },
-    accent: { sku: 'A-202', name: 'Red Anodise', collection: 'Anodise', finish: 'anodise', hex: '#7f1d1d', roughness: 0.26, metalness: 0.94 },
-    frame: { sku: 'A-203', name: 'Blue Anodise', collection: 'Anodise', finish: 'anodise', hex: '#1e3a5f', roughness: 0.24, metalness: 0.95 },
-    feature: { sku: 'A-204', name: 'Green Anodise', collection: 'Anodise', finish: 'anodise', hex: '#14532d', roughness: 0.26, metalness: 0.93 },
-  },
-  {
-    id: 'anodise-3',
-    name: 'Architectural Anodise',
-    style: 'Anodise',
-    primary: { sku: 'A-301', name: 'Natural Silver', collection: 'Anodise', finish: 'anodise', hex: '#c5cbd4', roughness: 0.23, metalness: 0.97 },
-    accent: { sku: 'A-302', name: 'Titanium Grey', collection: 'Anodise', finish: 'anodise', hex: '#4b5563', roughness: 0.25, metalness: 0.95 },
-    frame: { sku: 'A-303', name: 'Graphite Anodise', collection: 'Anodise', finish: 'anodise', hex: '#374151', roughness: 0.21, metalness: 0.98 },
-    feature: { sku: 'A-304', name: 'Anthracite Anodise', collection: 'Anodise', finish: 'anodise', hex: '#1f2937', roughness: 0.2, metalness: 0.98 },
-  },
-  // —— Wood (panel images from public/Panels/wood/) ——
-  ...(['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012-2', '013', '014', '015'] as const).map((code, idx) => {
-    const woodPanelId = `AB-SS-${code}` // filename without .png e.g. AB-SS-001, AB-SS-012-2
-    const sku = `AB | SS | ${code}`
-    const c: AlubondColor = { sku, name: `Wood ${code}`, collection: 'Wood', finish: 'wood', hex: '#C4A574', roughness: 0.7, metalness: 0, woodPanelId }
-    return { id: `wood-${idx + 1}`, name: 'Wood', style: 'Wood' as const, primary: c, accent: c, frame: c, feature: c }
-  }),
-  // —— Patina (panel images from public/Panels/Platina/) ——
-  ...(['001', '002', '003', '004', '005', '006'] as const).map((code, idx) => {
-    const patinaPanelId = `AB-SS-${code}`
-    const sku = `AB | SS | ${code}`
-    const c: AlubondColor = { sku, name: `Patina ${code}`, collection: 'Patina', finish: 'patina', hex: '#5a9c7a', roughness: 0.6, metalness: 0.5, patinaPanelId }
-    return { id: `patina-${idx + 1}`, name: 'Patina', style: 'Patina' as const, primary: c, accent: c, frame: c, feature: c }
-  }),
-  // —— Fusion (combinations of two finishes: two colours, applied row-alternating) ——
-  {
-    id: 'fusion-1',
-    name: 'Metallic + Anodise',
-    style: 'Fusion',
-    primary: { sku: 'F-101', name: 'Brushed Aluminium + Clear Anodise', collection: 'Fusion', finish: 'fusion', fusionOf: ['metallic', 'anodise'], hex: '#c0c8d0', hexSecondary: '#d4dce4', roughness: 0.4, metalness: 0.9, roughnessSecondary: 0.25, metalnessSecondary: 0.95 },
-    accent: { sku: 'F-102', name: 'Chrome + Champagne Anodise', collection: 'Fusion', finish: 'fusion', fusionOf: ['metallic', 'anodise'], hex: '#e8ecf0', hexSecondary: '#e8dcc8', roughness: 0.2, metalness: 1, roughnessSecondary: 0.3, metalnessSecondary: 0.9 },
-    frame: { sku: 'F-103', name: 'Gunmetal + Black Anodise', collection: 'Fusion', finish: 'fusion', fusionOf: ['metallic', 'anodise'], hex: '#2c3e50', hexSecondary: '#2c2c2c', roughness: 0.35, metalness: 0.95, roughnessSecondary: 0.2, metalnessSecondary: 0.98 },
-    feature: { sku: 'F-104', name: 'Titanium + Smoke Anodise', collection: 'Fusion', finish: 'fusion', fusionOf: ['metallic', 'anodise'], hex: '#7f8c8d', hexSecondary: '#6b7280', roughness: 0.45, metalness: 0.85, roughnessSecondary: 0.28, metalnessSecondary: 0.92 },
-  },
-  {
-    id: 'fusion-2',
-    name: 'Matte + Metallic',
-    style: 'Fusion',
-    primary: { sku: 'F-201', name: 'Slate Grey + Brushed Silver', collection: 'Fusion', finish: 'fusion', fusionOf: ['matte', 'metallic'], hex: '#4a5568', hexSecondary: '#c0c8d0', roughness: 0.85, metalness: 0, roughnessSecondary: 0.4, metalnessSecondary: 0.9 },
-    accent: { sku: 'F-202', name: 'Pearl White + Chrome', collection: 'Fusion', finish: 'fusion', fusionOf: ['matte', 'metallic'], hex: '#f7fafc', hexSecondary: '#e8ecf0', roughness: 0.8, metalness: 0, roughnessSecondary: 0.2, metalnessSecondary: 1 },
-    frame: { sku: 'F-203', name: 'Graphite + Gunmetal', collection: 'Fusion', finish: 'fusion', fusionOf: ['matte', 'metallic'], hex: '#2d3748', hexSecondary: '#2c3e50', roughness: 0.9, metalness: 0, roughnessSecondary: 0.35, metalnessSecondary: 0.95 },
-    feature: { sku: 'F-204', name: 'Charcoal + Titanium', collection: 'Fusion', finish: 'fusion', fusionOf: ['matte', 'metallic'], hex: '#1a202c', hexSecondary: '#7f8c8d', roughness: 0.85, metalness: 0, roughnessSecondary: 0.45, metalnessSecondary: 0.85 },
-  },
-  {
-    id: 'fusion-3',
-    name: 'Wood + Metallic',
-    style: 'Fusion',
-    primary: { sku: 'F-301', name: 'Oak + Brushed Aluminium', collection: 'Fusion', finish: 'fusion', fusionOf: ['wood', 'metallic'], hex: '#c4a574', hexSecondary: '#c0c8d0', roughness: 0.7, metalness: 0, roughnessSecondary: 0.4, metalnessSecondary: 0.9 },
-    accent: { sku: 'F-302', name: 'Walnut + Bronze', collection: 'Fusion', finish: 'fusion', fusionOf: ['wood', 'metallic'], hex: '#5c4033', hexSecondary: '#8b6914', roughness: 0.65, metalness: 0, roughnessSecondary: 0.4, metalnessSecondary: 0.9 },
-    frame: { sku: 'F-303', name: 'Teak + Copper', collection: 'Fusion', finish: 'fusion', fusionOf: ['wood', 'metallic'], hex: '#a67c52', hexSecondary: '#b87333', roughness: 0.68, metalness: 0, roughnessSecondary: 0.3, metalnessSecondary: 0.95 },
-    feature: { sku: 'F-304', name: 'Ash + Gunmetal', collection: 'Fusion', finish: 'fusion', fusionOf: ['wood', 'metallic'], hex: '#8b7355', hexSecondary: '#2c3e50', roughness: 0.75, metalness: 0, roughnessSecondary: 0.35, metalnessSecondary: 0.95 },
-  },
-  {
-    id: 'fusion-4',
-    name: 'Matte + Anodise',
-    style: 'Fusion',
-    primary: { sku: 'F-401', name: 'Concrete Grey + Clear Anodise', collection: 'Fusion', finish: 'fusion', fusionOf: ['matte', 'anodise'], hex: '#6b7280', hexSecondary: '#d4dce4', roughness: 0.8, metalness: 0.1, roughnessSecondary: 0.25, metalnessSecondary: 0.95 },
-    accent: { sku: 'F-402', name: 'Off White + Champagne Anodise', collection: 'Fusion', finish: 'fusion', fusionOf: ['matte', 'anodise'], hex: '#f5f5f4', hexSecondary: '#e8dcc8', roughness: 0.78, metalness: 0.05, roughnessSecondary: 0.3, metalnessSecondary: 0.9 },
-    frame: { sku: 'F-403', name: 'Anthracite + Black Anodise', collection: 'Fusion', finish: 'fusion', fusionOf: ['matte', 'anodise'], hex: '#1f2937', hexSecondary: '#2c2c2c', roughness: 0.85, metalness: 0, roughnessSecondary: 0.2, metalnessSecondary: 0.98 },
-    feature: { sku: 'F-404', name: 'Mid Grey + Smoke Anodise', collection: 'Fusion', finish: 'fusion', fusionOf: ['matte', 'anodise'], hex: '#9ca3af', hexSecondary: '#6b7280', roughness: 0.75, metalness: 0.15, roughnessSecondary: 0.28, metalnessSecondary: 0.92 },
-  },
-  {
-    id: 'fusion-5',
-    name: 'Patina + Metallic',
-    style: 'Fusion',
-    primary: { sku: 'F-501', name: 'Verdigris + Brushed Copper', collection: 'Fusion', finish: 'fusion', fusionOf: ['patina', 'metallic'], hex: '#3d8b6b', hexSecondary: '#b87333', roughness: 0.6, metalness: 0.6, roughnessSecondary: 0.3, metalnessSecondary: 0.95 },
-    accent: { sku: 'F-502', name: 'Copper Patina + Bronze', collection: 'Fusion', finish: 'fusion', fusionOf: ['patina', 'metallic'], hex: '#5a9c7a', hexSecondary: '#8b6914', roughness: 0.55, metalness: 0.5, roughnessSecondary: 0.4, metalnessSecondary: 0.9 },
-    frame: { sku: 'F-503', name: 'Oxidised Bronze + Gunmetal', collection: 'Fusion', finish: 'fusion', fusionOf: ['patina', 'metallic'], hex: '#4a6741', hexSecondary: '#2c3e50', roughness: 0.65, metalness: 0.55, roughnessSecondary: 0.35, metalnessSecondary: 0.95 },
-    feature: { sku: 'F-504', name: 'Aged Copper + Antique Brass', collection: 'Fusion', finish: 'fusion', fusionOf: ['patina', 'metallic'], hex: '#6b8e6b', hexSecondary: '#cd7f32', roughness: 0.58, metalness: 0.52, roughnessSecondary: 0.45, metalnessSecondary: 0.85 },
-  },
+  // —— Metallic & Anodise: panel images only (see buildPanelTexturePalettes) ——
+  // —— Panel textures (wood, patina, anodise, metalic, brush, concrete, najdi, prismatic, sparkle, stone&marbles, texture) ——
+  ...buildPanelTexturePalettes(),
+  // —— Fusion: real panel pairs (row-alternating on facade) + AI hex suggestions in UI ——
+  ...buildFusionPanelPalettes(),
 ]
 
-export const styleCategories = ['Modern', 'Metallic', 'Fusion', 'Anodise', 'Wood', 'Patina'] as const
+export const styleCategories = [
+  'Modern',
+  'Metallic',
+  'Fusion',
+  'Anodise',
+  'Wood',
+  'Patina',
+  'Brush',
+  'Concrete',
+  'Najdi',
+  'Prismatic',
+  'Sparkle',
+  'StoneMarble',
+  'Texture',
+] as const
 
 /** Display label for finish; Fusion shows e.g. "Metallic + Anodise" when fusionOf is set. */
 export function getFinishLabel(color: AlubondColor): string {
-  if (color.finish === 'fusion' && color.fusionOf?.length === 2) {
+  if (color.finish === 'fusion' && color.fusionOf && color.fusionOf.length >= 2) {
     return color.fusionOf.map((f) => f.charAt(0).toUpperCase() + f.slice(1)).join(' + ')
   }
   return color.finish
 }
 
 /** All unique colours per style for library grid (dedupe by sku within each style) */
-export function getColoursByStyle(
-  palettesList: Palette[]
-): Record<Palette['style'], AlubondColor[]> {
-  const byStyle: Record<string, { list: AlubondColor[]; seen: Set<string> }> = {
+export function getColoursByStyle(palettesList: Palette[]): Record<PaletteStyle, AlubondColor[]> {
+  const byStyle: Record<PaletteStyle, { list: AlubondColor[]; seen: Set<string> }> = {
     Modern: { list: [], seen: new Set() },
     Metallic: { list: [], seen: new Set() },
     Fusion: { list: [], seen: new Set() },
     Anodise: { list: [], seen: new Set() },
     Wood: { list: [], seen: new Set() },
     Patina: { list: [], seen: new Set() },
+    Brush: { list: [], seen: new Set() },
+    Concrete: { list: [], seen: new Set() },
+    Najdi: { list: [], seen: new Set() },
+    Prismatic: { list: [], seen: new Set() },
+    Sparkle: { list: [], seen: new Set() },
+    StoneMarble: { list: [], seen: new Set() },
+    Texture: { list: [], seen: new Set() },
   }
   for (const p of palettesList) {
     const entry = byStyle[p.style]
+    if (!entry) continue
     for (const colour of [p.primary, p.accent, p.frame, p.feature]) {
       if (entry.seen.has(colour.sku)) continue
       entry.seen.add(colour.sku)
@@ -257,5 +401,12 @@ export function getColoursByStyle(
     Anodise: byStyle.Anodise.list,
     Wood: byStyle.Wood.list,
     Patina: byStyle.Patina.list,
+    Brush: byStyle.Brush.list,
+    Concrete: byStyle.Concrete.list,
+    Najdi: byStyle.Najdi.list,
+    Prismatic: byStyle.Prismatic.list,
+    Sparkle: byStyle.Sparkle.list,
+    StoneMarble: byStyle.StoneMarble.list,
+    Texture: byStyle.Texture.list,
   }
 }

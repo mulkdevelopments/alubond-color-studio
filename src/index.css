@@ -1,60 +1,107 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --glass-blur: blur(28px) saturate(155%);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-fill: rgba(255, 255, 255, 0.07);
+  --liquid-base: #000000;
+  --brand-orange: #e87722;
+}
 
 * {
   box-sizing: border-box;
 }
-html, body, #root {
+
+html,
+body,
+#root {
   margin: 0;
   height: 100%;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  background: #0E1525;
-  color: #E4E9F1;
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    sans-serif;
+  background: var(--liquid-base);
+  color: rgba(255, 255, 255, 0.94);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background: rgba(232, 119, 34, 0.3);
+  background: rgba(232, 119, 34, 0.35);
   color: #fff;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(160, 168, 184, 0.25);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(160, 168, 184, 0.4);
+/* Monochrome liquid mesh + warm accent — no blue */
+@keyframes liquid-drift {
+  0%,
+  100% {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  50% {
+    transform: scale(1.02) translate3d(0.4%, -0.25%, 0);
+  }
 }
 
-input[type="range"] {
-  -webkit-appearance: none;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(160, 168, 184, 0.2);
-  outline: none;
+.app-liquid-mesh {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: radial-gradient(ellipse 110% 88% at 14% 12%, rgba(255, 255, 255, 0.06), transparent 58%),
+    radial-gradient(ellipse 78% 68% at 90% 8%, rgba(232, 119, 34, 0.11), transparent 54%),
+    radial-gradient(ellipse 100% 58% at 50% 96%, rgba(255, 255, 255, 0.035), transparent 52%),
+    radial-gradient(ellipse 68% 48% at 68% 44%, rgba(180, 180, 180, 0.055), transparent 50%),
+    linear-gradient(175deg, #000000 0%, #0c0c0c 42%, #000000 100%);
+  animation: liquid-drift 24s ease-in-out infinite;
 }
-input[type="range"]::-webkit-slider-thumb {
+
+.app-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(232, 119, 34, 0.35), rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(232, 119, 34, 0.5), rgba(255, 255, 255, 0.2));
+  background-clip: padding-box;
+}
+
+input[type='range'] {
   -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: #E87722;
+  background: linear-gradient(145deg, #ff9a4d, var(--brand-orange));
   cursor: pointer;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 12px rgba(232, 119, 34, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.15);
 }
 
 select {
   -webkit-appearance: none;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238892A4' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 28px !important;
@@ -62,4 +109,37 @@ select {
 
 button {
   font-family: inherit;
+}
+
+/* Landing: extra aurora orbs */
+.landing-liquid-blobs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+.landing-liquid-blobs::before,
+.landing-liquid-blobs::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.5;
+  animation: liquid-drift 28s ease-in-out infinite;
+}
+.landing-liquid-blobs::before {
+  width: min(90vw, 720px);
+  height: min(90vw, 720px);
+  top: -20%;
+  left: -15%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08), transparent 70%);
+}
+.landing-liquid-blobs::after {
+  width: min(70vw, 560px);
+  height: min(70vw, 560px);
+  bottom: -10%;
+  right: -10%;
+  background: radial-gradient(circle, rgba(232, 119, 34, 0.35), transparent 70%);
+  animation-delay: -8s;
 }

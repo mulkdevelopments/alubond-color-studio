@@ -11,7 +11,7 @@ interface FacadeViewerProps {
   onApplyColor: (uuid: string, currentState: MaterialState) => void
   appliedMaterials?: Map<string, MaterialState>
   onCanvasReady?: (canvas: HTMLCanvasElement) => void
-  onPanelsReady?: (panels: { uuid: string; row: number }[]) => void
+  onPanelsReady?: (panels: { uuid: string; row: number; stripeIndex: number }[]) => void
   /** Background color for canvas (e.g. workspace dark #1A1A1A) */
   canvasBackground?: string
   /** When true, canvas clears with transparency so parent gradient shows through */
@@ -35,7 +35,7 @@ function Scene({
   selectionToolEnabled: boolean
   onApplyColor: (uuid: string, currentState: MaterialState) => void
   appliedMaterials?: Map<string, MaterialState>
-  onPanelsReady?: (panels: { uuid: string; row: number }[]) => void
+  onPanelsReady?: (panels: { uuid: string; row: number; stripeIndex: number }[]) => void
 }) {
   return (
     <>

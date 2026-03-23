@@ -1,10 +1,45 @@
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { OrbitControls, Environment, Html } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Mesh, MeshStandardMaterial, Group } from 'three'
 import { IfcAPI } from 'web-ifc'
 import type { MaterialState } from '../types'
+import type { IfcMeshMeta } from '../utils/ifcMeshOrdering'
+import { getPanelTextureUrl } from '../utils/panelTextureUrl'
+
+const METALLIC_THRESHOLD = 0.5
+const METALLIC_ENV_INTENSITY = 1.6
+
+/** IFC meshes from web-ifc often have no UVs; panel textures need them. */
+function addPlanarUvIfMissing(geometry: THREE.BufferGeometry) {
+  if (geometry.getAttribute('uv')) return
+  const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute | null
+  if (!posAttr) return
+  geometry.computeBoundingBox()
+  const bb = geometry.boundingBox
+  if (!bb) return
+  const dx = Math.max(bb.max.x - bb.min.x, 1e-6)
+  const dy = Math.max(bb.max.y - bb.min.y, 1e-6)
+  const dz = Math.max(bb.max.z - bb.min.z, 1e-6)
+  type Axis = 'x' | 'y' | 'z'
+  const axes = [
+    { key: 'x' as const, min: bb.min.x, span: dx },
+    { key: 'y' as const, min: bb.min.y, span: dy },
+    { key: 'z' as const, min: bb.min.z, span: dz },
+  ].sort((a, b) => b.span - a.span)
+  const uAx = axes[0]
+  const vAx = axes[1]
+  const coord = (axis: Axis, i: number) =>
+    axis === 'x' ? posAttr.getX(i) : axis === 'y' ? posAttr.getY(i) : posAttr.getZ(i)
+  const count = posAttr.count
+  const uv = new Float32Array(count * 2)
+  for (let i = 0; i < count; i++) {
+    uv[i * 2] = (coord(uAx.key, i) - uAx.min) / uAx.span
+    uv[i * 2 + 1] = (coord(vAx.key, i) - vAx.min) / vAx.span
+  }
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+}
 
 interface IFCViewerProps {
   ifcUrl: string
@@ -12,6 +47,8 @@ interface IFCViewerProps {
   onApplyColor: (uuid: string, currentState: MaterialState) => void
   appliedMaterials?: Map<string, MaterialState>
   onCanvasReady?: (canvas: HTMLCanvasElement) => void
+  /** World-space mesh centres after load (used for spatial fusion / apply-all). */
+  onMeshesReady?: (meshes: IfcMeshMeta[]) => void
 }
 
 function CanvasRef({ onReady }: { onReady: (canvas: HTMLCanvasElement) => void }) {
@@ -33,17 +70,55 @@ function IFCModel({
   selectionToolEnabled,
   onApplyColor,
   appliedMaterials,
+  onMeshesReady,
 }: {
   ifcUrl: string
   selectionToolEnabled: boolean
   onApplyColor: (uuid: string, currentState: MaterialState) => void
   appliedMaterials?: Map<string, MaterialState>
+  onMeshesReady?: (meshes: IfcMeshMeta[]) => void
 }) {
   const groupRef = useRef<Group>(null)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
-  const { gl, scene: threeScene } = useThree()
+  const { gl, scene: threeScene, invalidate } = useThree()
+  const panelTextureCache = useRef<Map<string, THREE.Texture>>(new Map())
+  const panelTextureLoading = useRef<Set<string>>(new Set())
+  const onMeshesReadyRef = useRef(onMeshesReady)
+  onMeshesReadyRef.current = onMeshesReady
+
+  useLayoutEffect(() => {
+    invalidate()
+  }, [appliedMaterials, invalidate])
+
+  useEffect(() => {
+    if (!appliedMaterials?.size) return
+    const cache = panelTextureCache.current
+    const loading = panelTextureLoading.current
+    appliedMaterials.forEach((state) => {
+      if (!state.panelTexture) return
+      const url = getPanelTextureUrl(state.panelTexture)
+      if (cache.has(url) || loading.has(url)) return
+      loading.add(url)
+      const loader = new THREE.TextureLoader()
+      loader.load(
+        url,
+        (tex) => {
+          tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+          if ('colorSpace' in tex) (tex as THREE.Texture).colorSpace = THREE.SRGBColorSpace
+          tex.needsUpdate = true
+          cache.set(url, tex)
+          loading.delete(url)
+          invalidate()
+        },
+        undefined,
+        () => {
+          loading.delete(url)
+        }
+      )
+    })
+  }, [appliedMaterials, invalidate])
 
   useEffect(() => {
     gl.domElement.style.cursor = selectionToolEnabled && hovered ? 'pointer' : 'default'
@@ -95,6 +170,7 @@ function IFCModel({
             bufferGeometry.setAttribute('position', new THREE.BufferAttribute(posFloats, 3))
             bufferGeometry.setAttribute('normal', new THREE.BufferAttribute(normFloats, 3))
             bufferGeometry.setIndex(new THREE.BufferAttribute(indices, 1))
+            addPlanarUvIfMissing(bufferGeometry)
 
             const color = new THREE.Color(placed.color.x, placed.color.y, placed.color.z)
             const opacity = placed.color.w
@@ -133,14 +209,31 @@ function IFCModel({
           group.scale.setScalar(scale)
         }
 
+        group.updateWorldMatrix(true, true)
+        const metas: IfcMeshMeta[] = []
+        const meshCenter = new THREE.Vector3()
+        group.traverse((node) => {
+          if (!(node as Mesh).isMesh) return
+          const mesh = node as Mesh
+          new THREE.Box3().setFromObject(mesh).getCenter(meshCenter)
+          metas.push({ uuid: mesh.uuid, cx: meshCenter.x, cy: meshCenter.y, cz: meshCenter.z })
+        })
+        if (!cancelled) onMeshesReadyRef.current?.(metas)
+
         if (!cancelled) setLoaded(true)
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load IFC')
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load IFC')
+          onMeshesReadyRef.current?.([])
+        }
       }
     }
 
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      onMeshesReadyRef.current?.([])
+    }
   }, [ifcUrl])
 
   const handleClick = (e: { stopPropagation: () => void; object: THREE.Object3D }) => {
@@ -156,6 +249,7 @@ function IFCModel({
     const group = groupRef.current
     if (!group) return
     const envMap = threeScene.environment ?? null
+    const texCache = panelTextureCache.current
     group.traverse((node) => {
       if (!(node as Mesh).isMesh) return
       const mesh = node as Mesh
@@ -163,12 +257,34 @@ function IFCModel({
       if (!mat?.color) return
       const applied = appliedMaterials?.get(mesh.uuid)
       if (applied) {
-        mat.color.setHex(applied.color)
+        const url = applied.panelTexture ? getPanelTextureUrl(applied.panelTexture) : null
+        const panelTex = url ? texCache.get(url) : null
+        if (applied.panelTexture && panelTex) {
+          if (mat.map !== panelTex) {
+            mat.map = panelTex
+            mat.needsUpdate = true
+          }
+          mat.color.setHex(0xffffff)
+        } else if (applied.panelTexture && url) {
+          if (mat.map != null) {
+            mat.map = null
+            mat.needsUpdate = true
+          }
+          mat.color.setHex(applied.color)
+          mat.metalness = applied.metalness
+          mat.roughness = applied.roughness
+        } else {
+          if (mat.map != null) {
+            mat.map = null
+            mat.needsUpdate = true
+          }
+          mat.color.setHex(applied.color)
+        }
         mat.metalness = applied.metalness
         mat.roughness = applied.roughness
-        if (applied.metalness >= 0.5 && envMap) {
+        if (applied.metalness >= METALLIC_THRESHOLD && envMap) {
           mat.envMap = envMap
-          mat.envMapIntensity = 1.6
+          mat.envMapIntensity = METALLIC_ENV_INTENSITY
         } else {
           mat.envMapIntensity = 1
         }
@@ -214,6 +330,7 @@ export function IFCViewer({
   onApplyColor,
   appliedMaterials,
   onCanvasReady,
+  onMeshesReady,
 }: IFCViewerProps) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#fafafa' }}>
@@ -243,6 +360,7 @@ export function IFCViewer({
             selectionToolEnabled={selectionToolEnabled}
             onApplyColor={onApplyColor}
             appliedMaterials={appliedMaterials}
+            onMeshesReady={onMeshesReady}
           />
           <OrbitControls makeDefault enablePan enableZoom enableRotate minPolarAngle={0} maxPolarAngle={Math.PI / 2} />
         </Suspense>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { Theme } from '../theme'
-import { getThemeTokens, brand } from '../theme'
+import { getThemeTokens, brand, glassChrome } from '../theme'
 
 export interface GeneratedRender {
   id: string
@@ -37,7 +38,7 @@ function FullscreenImageDialog({
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -45,7 +46,7 @@ function FullscreenImageDialog({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1001,
+        zIndex: 20000,
         background: 'rgba(0,0,0,0.92)',
         display: 'flex',
         alignItems: 'center',
@@ -90,7 +91,8 @@ function FullscreenImageDialog({
         }}
         onClick={(e) => e.stopPropagation()}
       />
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -113,7 +115,7 @@ function CompareDialog({
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -121,7 +123,7 @@ function CompareDialog({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1000,
+        zIndex: 20000,
         background: 'rgba(0,0,0,0.6)',
         display: 'flex',
         alignItems: 'center',
@@ -207,7 +209,8 @@ function CompareDialog({
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -315,21 +318,33 @@ export function RendersPanel({
     transition: 'all 0.15s ease',
   }
 
+  const isWorkspace = theme === 'workspace'
+
   return (
     <aside
       style={{
         width: '100%',
         height: '100%',
         minHeight: 0,
-        background: t.sidebarBg,
-        borderLeft: `1px solid ${t.border}`,
+        background: isWorkspace ? 'transparent' : t.sidebarBg,
+        borderLeft: isWorkspace ? 'none' : `1px solid ${t.border}`,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}
     >
       {/* Header */}
-      <header style={{ padding: '14px 16px', borderBottom: `1px solid ${t.border}`, flexShrink: 0 }}>
+      <header
+        style={{
+          padding: '16px 18px',
+          borderBottom: `1px solid ${isWorkspace ? glassChrome.borderSoft : t.border}`,
+          flexShrink: 0,
+          background: isWorkspace ? glassChrome.surface : 'transparent',
+          backdropFilter: isWorkspace ? glassChrome.blurMedium : undefined,
+          WebkitBackdropFilter: isWorkspace ? glassChrome.blurMedium : undefined,
+          boxShadow: isWorkspace ? glassChrome.specularSoft : undefined,
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={brand.orange} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -389,17 +404,20 @@ export function RendersPanel({
           disabled={isGenerating}
           style={{
             width: '100%',
-            padding: '10px 16px',
+            padding: '11px 16px',
             fontSize: 13,
-            fontWeight: 600,
-            background: brand.orange,
-            border: 'none',
-            borderRadius: 10,
+            fontWeight: 700,
+            background: isWorkspace
+              ? `linear-gradient(135deg, ${brand.orangeHover}, ${brand.orange})`
+              : brand.orange,
+            border: isWorkspace ? '1px solid rgba(255,255,255,0.2)' : 'none',
+            borderRadius: 14,
             color: '#fff',
             cursor: isGenerating ? 'not-allowed' : 'pointer',
             opacity: isGenerating ? 0.7 : 1,
-            transition: 'all 0.15s ease',
-            letterSpacing: '0.01em',
+            transition: 'all 0.2s ease',
+            letterSpacing: '0.02em',
+            boxShadow: isWorkspace ? '0 6px 24px rgba(232,119,34,0.35), inset 0 1px 0 rgba(255,255,255,0.2)' : undefined,
           }}
         >
           {isGenerating ? 'Generating…' : 'Generate Render'}

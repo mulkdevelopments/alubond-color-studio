@@ -1,21 +1,22 @@
 import { useState } from 'react'
-import { workspace, brand } from '../theme'
+import { workspace, brand, glassChrome } from '../theme'
 
-export interface WorkspaceOption {
+/** Header switcher: Facade Maker vs Image / IFC studios */
+export interface StudioModeOption {
   id: string
   name: string
 }
 
-export type LeftStripTab = 'palette' | 'facade'
+export type WorkspaceToolbarPreset = 'facade' | 'ifc' | 'image'
 
 interface WorkspaceLayoutProps {
-  workspaceOptions: WorkspaceOption[]
-  activeWorkspaceId: string
-  onWorkspaceChange: (id: string) => void
+  studioModeOptions: StudioModeOption[]
+  activeStudioModeId: string
+  onStudioModeChange: (id: string) => void
   onBack: () => void
   onThemeToggle: () => void
   leftPanel: React.ReactNode
-  /** When set, show Facade tab in left strip and this panel when Facade is selected */
+  /** When set with showFacadeTab: left sidebar shows facade controls only (colour library uses bottom dock) */
   facadePanel?: React.ReactNode
   /** Whether the Facade tab is available (e.g. when Facade Maker model is selected) */
   showFacadeTab?: boolean
@@ -23,6 +24,8 @@ interface WorkspaceLayoutProps {
   children: React.ReactNode
   /** Optional bar below 3D view */
   bottomBar?: React.ReactNode
+  /** When set: toolbar fixed at top, this content (tabs + film) fixed at bottom */
+  bottomFilmDock?: React.ReactNode
   /** Toolbar actions */
   canUndo: boolean
   canRedo: boolean
@@ -33,18 +36,25 @@ interface WorkspaceLayoutProps {
   onSnapshot: () => void
   onExportPdf: () => void
   paintedCount: number
+  /** Header status (default: “{paintedCount} surface(s)”) */
+  statusLine?: string
+  /** Extra controls before the status line (e.g. IFC) */
+  headerAccessory?: React.ReactNode
+  /** `facade`: full toolbar · `ifc`: undo/redo/snapshot · `image`: hidden */
+  toolbarPreset?: WorkspaceToolbarPreset
+  /** When false, right column is omitted */
+  showRightPanel?: boolean
 }
 
-const LEFT_STRIP_WIDTH = 56
 const LEFT_PANEL_WIDTH = 300
 const RIGHT_PANEL_WIDTH = 280
 const RIGHT_PANEL_MIN_WIDTH = 220
 const CENTER_MIN_WIDTH = 400
 
 export function WorkspaceLayout({
-  workspaceOptions,
-  activeWorkspaceId,
-  onWorkspaceChange,
+  studioModeOptions,
+  activeStudioModeId,
+  onStudioModeChange,
   onBack,
   onThemeToggle,
   leftPanel,
@@ -53,6 +63,7 @@ export function WorkspaceLayout({
   rightPanel,
   children,
   bottomBar,
+  bottomFilmDock,
   canUndo,
   canRedo,
   onUndo,
@@ -62,12 +73,18 @@ export function WorkspaceLayout({
   onSnapshot,
   onExportPdf,
   paintedCount,
+  statusLine,
+  headerAccessory,
+  toolbarPreset = 'facade',
+  showRightPanel = true,
 }: WorkspaceLayoutProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [leftTab, setLeftTab] = useState<LeftStripTab>('facade')
-  const activeName = workspaceOptions.find((o) => o.id === activeWorkspaceId)?.name ?? 'Workspace'
+  const activeName = studioModeOptions.find((o) => o.id === activeStudioModeId)?.name ?? 'Studio'
   const showFacade = showFacadeTab && facadePanel != null
-  const currentLeftPanel = showFacade && leftTab === 'facade' ? facadePanel : leftPanel
+  const currentLeftPanel = showFacade ? facadePanel : leftPanel
+
+  const useSplitDock = bottomFilmDock != null
+  const showTopFloatingToolbar = toolbarPreset !== 'image'
 
   const iconBtn = (active?: boolean): React.CSSProperties => ({
     width: 36,
@@ -76,33 +93,126 @@ export function WorkspaceLayout({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
-    border: 'none',
-    background: active ? workspace.iconBgActive : workspace.iconBg,
-    color: active ? brand.orange : workspace.textMuted,
+    borderRadius: 12,
+    border: `1px solid ${active ? glassChrome.borderAccent : glassChrome.borderSoft}`,
+    background: active ? glassChrome.iconBgActive : glassChrome.iconBg,
+    color: active ? brand.orange : glassChrome.textMuted,
     cursor: 'pointer',
-    transition: 'all 0.15s ease',
+    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    boxShadow: active
+      ? `0 0 24px rgba(232,119,34,0.2), ${glassChrome.specular}`
+      : glassChrome.specularSoft,
   })
+
+  const status =
+    statusLine ??
+    `${paintedCount} surface${paintedCount !== 1 ? 's' : ''}`
+
+  const workspaceToolbar =
+    toolbarPreset === 'image' ? null : toolbarPreset === 'ifc' ? (
+      <>
+        <button type="button" onClick={onUndo} disabled={!canUndo} style={{ ...iconBtn(false), opacity: canUndo ? 1 : 0.4 }} title="Undo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
+        </button>
+        <button type="button" onClick={onRedo} disabled={!canRedo} style={{ ...iconBtn(false), opacity: canRedo ? 1 : 0.4 }} title="Redo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" /></svg>
+        </button>
+        <div style={{ width: 1, height: 22, background: glassChrome.border, margin: '0 4px', opacity: 0.5 }} />
+        <button type="button" onClick={onSnapshot} style={iconBtn()} title="Snapshot">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+        </button>
+      </>
+    ) : (
+      <>
+        <button type="button" onClick={onUndo} disabled={!canUndo} style={{ ...iconBtn(false), opacity: canUndo ? 1 : 0.4 }} title="Undo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
+        </button>
+        <button type="button" onClick={onRedo} disabled={!canRedo} style={{ ...iconBtn(false), opacity: canRedo ? 1 : 0.4 }} title="Redo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" /></svg>
+        </button>
+        <div style={{ width: 1, height: 22, background: glassChrome.border, margin: '0 4px', opacity: 0.5 }} />
+        <button
+          type="button"
+          onClick={() => onCompareModeChange(compareMode === 'single' ? 'split' : 'single')}
+          style={iconBtn(compareMode === 'split')}
+          title="Compare split view"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="12" y1="3" x2="12" y2="21" /></svg>
+        </button>
+        <div style={{ width: 1, height: 22, background: glassChrome.border, margin: '0 4px', opacity: 0.5 }} />
+        <button type="button" onClick={onSnapshot} style={iconBtn()} title="Snapshot">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+        </button>
+        <button
+          type="button"
+          onClick={onExportPdf}
+          style={{
+            padding: '9px 18px',
+            fontSize: 12,
+            fontWeight: 700,
+            background: `linear-gradient(135deg, ${brand.orangeHover}, ${brand.orange})`,
+            border: '1px solid rgba(255,255,255,0.25)',
+            borderRadius: 999,
+            color: '#fff',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginLeft: 4,
+            boxShadow: '0 4px 20px rgba(232,119,34,0.45), inset 0 1px 0 rgba(255,255,255,0.25)',
+          }}
+          title="Export PDF"
+        >
+          Export
+        </button>
+      </>
+    )
+
+  const dockChrome: React.CSSProperties = {
+    position: 'fixed',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 100,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '8px 12px',
+    background: glassChrome.toolbar,
+    backdropFilter: glassChrome.blurHeavy,
+    WebkitBackdropFilter: glassChrome.blurHeavy,
+    border: `1px solid ${glassChrome.border}`,
+    borderRadius: 999,
+    boxShadow: `0 16px 48px rgba(0,0,0,0.45), ${glassChrome.specular}, 0 0 0 1px rgba(232,119,34,0.08)`,
+  }
 
   return (
     <div
+      className="app-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
         height: '100vh',
         overflow: 'hidden',
-        background: workspace.canvas,
+        background: '#000000',
+        position: 'relative',
       }}
     >
-      {/* Minimal top header */}
+      <div className="app-liquid-mesh" aria-hidden />
+      {/* Liquid glass top bar */}
       <header
         style={{
+          position: 'relative',
+          zIndex: 50,
           flexShrink: 0,
-          height: 48,
-          minHeight: 48,
-          padding: '0 12px 0 8px',
-          background: workspace.panel,
-          borderBottom: `1px solid ${workspace.border}`,
+          height: 52,
+          minHeight: 52,
+          overflow: 'visible',
+          padding: '0 14px 0 10px',
+          background: glassChrome.surfaceDeep,
+          backdropFilter: glassChrome.blur,
+          WebkitBackdropFilter: glassChrome.blur,
+          borderBottom: `1px solid ${glassChrome.border}`,
+          boxShadow: glassChrome.specular,
           display: 'flex',
           alignItems: 'center',
           gap: 12,
@@ -123,25 +233,28 @@ export function WorkspaceLayout({
           </svg>
         </button>
         <img src="/alubond-logo.png" alt="Alubond" style={{ height: 26, objectFit: 'contain', opacity: 0.95 }} />
-        <div style={{ width: 1, height: 20, background: workspace.borderLight }} />
+        <div style={{ width: 1, height: 22, background: glassChrome.border, borderRadius: 1, opacity: 0.6 }} />
 
-        {/* Workspace dropdown */}
+        {/* Switch Facade Maker / Image Studio / IFC Studio */}
         <div style={{ position: 'relative' }}>
           <button
             type="button"
             onClick={() => setDropdownOpen((o) => !o)}
             style={{
-              padding: '6px 12px',
+              padding: '7px 14px',
               fontSize: 13,
               fontWeight: 500,
-              background: 'transparent',
-              border: `1px solid ${workspace.borderLight}`,
-              borderRadius: 8,
-              color: workspace.text,
+              background: glassChrome.surface,
+              border: `1px solid ${glassChrome.border}`,
+              borderRadius: 12,
+              color: glassChrome.text,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
+              boxShadow: glassChrome.specularSoft,
+              backdropFilter: glassChrome.blurMedium,
+              WebkitBackdropFilter: glassChrome.blurMedium,
             }}
           >
             {activeName}
@@ -152,7 +265,7 @@ export function WorkspaceLayout({
           {dropdownOpen && (
             <>
               <div
-                style={{ position: 'fixed', inset: 0, zIndex: 10 }}
+                style={{ position: 'fixed', inset: 0, zIndex: 60 }}
                 onClick={() => setDropdownOpen(false)}
                 aria-hidden="true"
               />
@@ -161,29 +274,33 @@ export function WorkspaceLayout({
                   position: 'absolute',
                   top: '100%',
                   left: 0,
-                  marginTop: 4,
-                  minWidth: 160,
-                  background: workspace.card,
-                  border: `1px solid ${workspace.borderLight}`,
-                  borderRadius: 12,
-                  boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
-                  zIndex: 11,
+                  marginTop: 6,
+                  minWidth: 180,
+                  background: '#000000',
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  borderRadius: 14,
+                  boxShadow: '0 16px 48px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.06)',
+                  zIndex: 61,
                   overflow: 'hidden',
                 }}
               >
-                {workspaceOptions.map((opt) => (
+                {studioModeOptions.map((opt) => (
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => { onWorkspaceChange(opt.id); setDropdownOpen(false) }}
+                    onClick={() => {
+                      onStudioModeChange(opt.id)
+                      setDropdownOpen(false)
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
                       fontSize: 13,
-                      fontWeight: activeWorkspaceId === opt.id ? 600 : 500,
-                      background: activeWorkspaceId === opt.id ? workspace.iconBgActive : 'transparent',
+                      fontWeight: activeStudioModeId === opt.id ? 600 : 500,
+                      background:
+                        activeStudioModeId === opt.id ? 'rgba(232,119,34,0.14)' : 'transparent',
                       border: 'none',
-                      color: activeWorkspaceId === opt.id ? brand.orange : workspace.text,
+                      color: activeStudioModeId === opt.id ? brand.orange : 'rgba(255,255,255,0.88)',
                       cursor: 'pointer',
                       textAlign: 'left',
                     }}
@@ -198,8 +315,10 @@ export function WorkspaceLayout({
 
         <div style={{ flex: 1 }} />
 
-        <span style={{ fontSize: 11, color: workspace.textMuted }}>
-          {paintedCount} surface{paintedCount !== 1 ? 's' : ''}
+        {headerAccessory}
+
+        <span style={{ fontSize: 11, color: glassChrome.textMuted, fontWeight: 500 }}>
+          {status}
         </span>
         <button type="button" onClick={onThemeToggle} style={iconBtn()} title="Toggle theme">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -208,73 +327,29 @@ export function WorkspaceLayout({
         </button>
       </header>
 
-      {/* Body: strip | left card | center | right panel */}
-      <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
-        {/* Left icon strip */}
-        <div
-          style={{
-            width: LEFT_STRIP_WIDTH,
-            flexShrink: 0,
-            background: workspace.panel,
-            borderRight: `1px solid ${workspace.border}`,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            paddingTop: 12,
-            gap: 4,
-          }}
-        >
-          {showFacade && (
-            <button
-              type="button"
-              onClick={() => setLeftTab('facade')}
-              style={{
-                ...iconBtn(leftTab === 'facade'),
-                width: 40,
-                height: 40,
-              }}
-              title="Facade controls"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="3" width="7" height="7" rx="1" />
-                <rect x="3" y="14" width="7" height="7" rx="1" />
-                <rect x="14" y="14" width="7" height="7" rx="1" />
-              </svg>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setLeftTab('palette')}
-            style={{
-              ...iconBtn(leftTab === 'palette'),
-              width: 40,
-              height: 40,
-            }}
-            title="Facade Library"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="13.5" cy="6.5" r="2.5" />
-              <circle cx="19" cy="13.5" r="2.5" />
-              <circle cx="8" cy="13.5" r="2.5" />
-              <circle cx="13.5" cy="20" r="2.5" />
-              <path d="M12 2v4M4.93 10.93l2.83 2.83M19.07 10.93l2.83-2.83" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Left panel card */}
+      {/* Body: left card | center | right panel */}
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          flex: 1,
+          display: 'flex',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
+        {/* Left panel card — facade controls only when Facade Maker; otherwise full palette panel */}
         <aside
           style={{
             width: LEFT_PANEL_WIDTH,
             minWidth: LEFT_PANEL_WIDTH,
             flexShrink: 0,
-            padding: 12,
+            padding: 18,
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
-            background: workspace.panel,
-            borderRight: `1px solid ${workspace.border}`,
+            background: 'transparent',
+            borderRight: `1px solid ${glassChrome.borderSoft}`,
           }}
         >
           <div
@@ -282,12 +357,15 @@ export function WorkspaceLayout({
               flex: 1,
               minHeight: 0,
               overflow: 'hidden',
-              background: workspace.card,
-              borderRadius: 16,
-              border: `1px solid ${workspace.borderLight}`,
+              minWidth: 0,
+              background: glassChrome.surface,
+              backdropFilter: glassChrome.blur,
+              WebkitBackdropFilter: glassChrome.blur,
+              borderRadius: 20,
+              border: `1px solid ${glassChrome.border}`,
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+              boxShadow: `${glassChrome.shadowFloat}, ${glassChrome.specular}`,
             }}
           >
             {currentLeftPanel}
@@ -305,93 +383,76 @@ export function WorkspaceLayout({
             display: 'flex',
             flexDirection: 'column',
             background: workspace.sceneBg,
-            paddingBottom: 72,
+            paddingBottom: useSplitDock ? 340 : 72,
+            paddingTop: useSplitDock ? (showTopFloatingToolbar ? 84 : 12) : 0,
+            boxShadow: 'inset 0 0 80px rgba(0,0,0,0.25)',
           }}
         >
           {children}
           {bottomBar}
+          {useSplitDock ? (
+            <div
+              style={{
+                position: 'absolute',
+                left: 12,
+                right: 12,
+                bottom: 12,
+                zIndex: 50,
+                maxHeight: 'min(55vh, 520px)',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                padding: '12px 14px 14px',
+                background: glassChrome.toolbar,
+                backdropFilter: glassChrome.blurHeavy,
+                WebkitBackdropFilter: glassChrome.blurHeavy,
+                border: `1px solid ${glassChrome.border}`,
+                borderRadius: 20,
+                boxShadow: `0 16px 48px rgba(0,0,0,0.5), ${glassChrome.specular}, 0 0 0 1px rgba(232,119,34,0.08)`,
+                boxSizing: 'border-box',
+                pointerEvents: 'auto',
+              }}
+            >
+              {bottomFilmDock}
+            </div>
+          ) : null}
         </main>
 
-        {/* Right panel — fixed 280px, never grows; center gets all remaining space */}
-        <aside
-          style={{
-            flex: `0 1 ${RIGHT_PANEL_WIDTH}px`,
-            width: RIGHT_PANEL_WIDTH,
-            minWidth: RIGHT_PANEL_MIN_WIDTH,
-            maxWidth: RIGHT_PANEL_WIDTH,
-            boxSizing: 'border-box',
-            background: workspace.panel,
-            borderLeft: `1px solid ${workspace.border}`,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          {rightPanel}
-        </aside>
+        {showRightPanel ? (
+          <aside
+            style={{
+              flex: `0 1 ${RIGHT_PANEL_WIDTH}px`,
+              width: RIGHT_PANEL_WIDTH,
+              minWidth: RIGHT_PANEL_MIN_WIDTH,
+              maxWidth: RIGHT_PANEL_WIDTH,
+              boxSizing: 'border-box',
+              background: glassChrome.rail,
+              backdropFilter: glassChrome.blurMedium,
+              WebkitBackdropFilter: glassChrome.blurMedium,
+              borderLeft: `1px solid ${glassChrome.borderSoft}`,
+              boxShadow: `${glassChrome.specularSoft}`,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {rightPanel}
+          </aside>
+        ) : null}
       </div>
 
-      {/* Floating bottom toolbar */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 20,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 100,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '6px 10px',
-          background: workspace.toolbarBg,
-          border: `1px solid ${workspace.toolbarBorder}`,
-          borderRadius: 999,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-        }}
-      >
-        <button type="button" onClick={onUndo} disabled={!canUndo} style={{ ...iconBtn(false), opacity: canUndo ? 1 : 0.4 }} title="Undo">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
-        </button>
-        <button type="button" onClick={onRedo} disabled={!canRedo} style={{ ...iconBtn(false), opacity: canRedo ? 1 : 0.4 }} title="Redo">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" /></svg>
-        </button>
-        <div style={{ width: 1, height: 20, background: workspace.borderLight, margin: '0 4px' }} />
-        <button
-          type="button"
-          onClick={() => onCompareModeChange(compareMode === 'single' ? 'split' : 'single')}
-          style={iconBtn(compareMode === 'split')}
-          title="Compare split view"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="12" y1="3" x2="12" y2="21" /></svg>
-        </button>
-        <div style={{ width: 1, height: 20, background: workspace.borderLight, margin: '0 4px' }} />
-        <button type="button" onClick={onSnapshot} style={iconBtn()} title="Snapshot">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-        </button>
-        <button
-          type="button"
-          onClick={onExportPdf}
+      {workspaceToolbar != null ? (
+        <div
           style={{
-            padding: '8px 16px',
-            fontSize: 12,
-            fontWeight: 600,
-            background: brand.orange,
-            border: 'none',
-            borderRadius: 20,
-            color: '#fff',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            marginLeft: 4,
+            ...dockChrome,
+            ...(useSplitDock
+              ? { top: 58, bottom: 'auto', gap: 6 }
+              : { bottom: 22, top: 'auto', gap: 6 }),
           }}
-          title="Export PDF"
         >
-          Export
-        </button>
-      </div>
+          {workspaceToolbar}
+        </div>
+      ) : null}
+
     </div>
   )
 }

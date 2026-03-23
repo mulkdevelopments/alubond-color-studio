@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import type { Group, Mesh, MeshStandardMaterial } from 'three'
 import type { GLTF } from 'three-stdlib'
 import type { MaterialState } from '../types'
+import { getPanelTextureUrl } from '../utils/panelTextureUrl'
 
 type GLTFResult = GLTF & {
   nodes: Record<string, Mesh>
@@ -102,6 +103,27 @@ export function BuildingModel({
   }
   const cloned = clone.current
 
+  const panelTextureCache = useRef<Map<string, THREE.Texture>>(new Map())
+  const panelTextureLoading = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!appliedMaterials?.size) return
+    const cache = panelTextureCache.current
+    const loading = panelTextureLoading.current
+    appliedMaterials.forEach((state) => {
+      if (!state.panelTexture) return
+      const url = getPanelTextureUrl(state.panelTexture)
+      if (cache.has(url) || loading.has(url)) return
+      loading.add(url)
+      const loader = new THREE.TextureLoader()
+      loader.load(url, (t) => {
+        t.wrapS = t.wrapT = THREE.RepeatWrapping
+        if ('colorSpace' in t) (t as THREE.Texture).colorSpace = THREE.SRGBColorSpace
+        cache.set(url, t)
+        loading.delete(url)
+      }, undefined, () => { loading.delete(url) })
+    })
+  }, [appliedMaterials])
+
   const handleClick = (e: { stopPropagation: () => void; object: THREE.Object3D }) => {
     e.stopPropagation()
     if (!selectionToolEnabled) return
@@ -115,18 +137,25 @@ export function BuildingModel({
   useFrame(() => {
     const envMap = threeScene.environment ?? null
     const woodTex = getWoodGrainTexture()
+    const texCache = panelTextureCache.current
     traverseMeshes(cloned, (mesh) => {
       const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as MeshStandardMaterial
       if (!mat?.color) return
       const applied = appliedMaterials?.get(mesh.uuid)
       if (applied) {
-        mat.color.setHex(applied.color)
+        const url = applied.panelTexture ? getPanelTextureUrl(applied.panelTexture) : null
+        const panelTex = url ? texCache.get(url) : null
         mat.metalness = applied.metalness
         mat.roughness = applied.roughness
-        if (applied.finish === 'wood') {
+        if (applied.panelTexture && panelTex) {
+          mat.map = panelTex
+          mat.color.setHex(0xffffff)
+        } else if (applied.finish === 'wood') {
           mat.map = woodTex
+          mat.color.setHex(applied.color)
         } else {
           mat.map = null
+          mat.color.setHex(applied.color)
         }
         if (applied.metalness >= METALLIC_THRESHOLD && envMap) {
           mat.envMap = envMap

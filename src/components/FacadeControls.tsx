@@ -1,5 +1,5 @@
 import type { Theme } from '../theme'
-import { getThemeTokens, brand } from '../theme'
+import { getThemeTokens, brand, glassChrome } from '../theme'
 import type { FacadeSettings, PanelTransform, TypologyType } from './FacadeBuilding'
 import type { AlubondColor } from '../types'
 
@@ -338,7 +338,23 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
           {selectedColor ? (
             <>
               <div style={{ width: 26, height: 26, borderRadius: 8, background: selectedColor.hex, border: '1px solid rgba(0,0,0,0.15)', boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }} />
-              <button type="button" onClick={onApplyAll} style={{ padding: '5px 14px', fontSize: 11, fontWeight: 600, background: brand.orange, border: 'none', borderRadius: 20, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s ease' }}>
+              <button
+                type="button"
+                onClick={onApplyAll}
+                style={{
+                  padding: '6px 16px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  background: `linear-gradient(135deg, ${brand.orangeHover}, ${brand.orange})`,
+                  border: '1px solid rgba(255,255,255,0.22)',
+                  borderRadius: 999,
+                  color: '#fff',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 4px 16px rgba(232,119,34,0.35), inset 0 1px 0 rgba(255,255,255,0.2)',
+                }}
+              >
                 Apply All
               </button>
             </>
@@ -352,10 +368,28 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
 
   if (isVertical) {
     return (
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', padding: '8px 0' }}>
-        <div style={{ padding: '0 14px 8px', borderBottom: `1px solid ${t.border}`, marginBottom: 4 }}>
-          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: t.text }}>Facade controls</h3>
-          <p style={{ margin: '4px 0 0', fontSize: 11, color: t.textMuted }}>Style, proportion & transform</p>
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', padding: '6px 0' }}>
+        <div
+          style={{
+            padding: '12px 16px 12px',
+            borderBottom: `1px solid ${glassChrome.borderSoft}`,
+            marginBottom: 6,
+            marginLeft: 10,
+            marginRight: 10,
+            borderRadius: 14,
+            background: glassChrome.surface,
+            backdropFilter: glassChrome.blurMedium,
+            WebkitBackdropFilter: glassChrome.blurMedium,
+            border: `1px solid ${glassChrome.border}`,
+            boxShadow: `${glassChrome.specularSoft}`,
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: t.text, letterSpacing: '-0.01em' }}>
+            Facade controls
+          </h3>
+          <p style={{ margin: '5px 0 0', fontSize: 11, color: t.textMuted, lineHeight: 1.45 }}>
+            Style, proportion & transform
+          </p>
         </div>
         {content}
       </div>

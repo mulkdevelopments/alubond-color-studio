@@ -1,11 +1,9 @@
-import { useRef, useState, useEffect, useMemo } from 'react'
+import { useRef, useState, useEffect, useMemo, useLayoutEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Group, Mesh, MeshStandardMaterial } from 'three'
 import type { MaterialState } from '../types'
-
-const WOOD_PANEL_BASE = '/Panels/wood/'
-const PATINA_PANEL_BASE = '/Panels/Platina/'
+import { getPanelTextureUrl } from '../utils/panelTextureUrl'
 
 export type PanelTransform = 'flat' | 'alternate' | 'wave' | 'fold' | 'diagonal'
 export type PanelStyle = 'landscape' | 'portrait' | 'square'
@@ -45,8 +43,11 @@ interface FacadeBuildingProps {
   selectionToolEnabled: boolean
   onApplyColor: (uuid: string, currentState: MaterialState) => void
   appliedMaterials?: Map<string, MaterialState>
-  /** Called with panel uuid and row index (0-based) for each panel; row used for Fusion row-alternating apply. */
-  onPanelsReady?: (panels: { uuid: string; row: number }[]) => void
+  /**
+   * Called for each paintable panel mesh. `stripeIndex` is 0..n-1 in facade order (used for N-way fusion cycling).
+   * `row` is the facade grid row (only 0..rows-1), so using row alone cannot express 3+ palette cycles when rows < 3.
+   */
+  onPanelsReady?: (panels: { uuid: string; row: number; stripeIndex: number }[]) => void
 }
 
 function getMaterialState(mat: MeshStandardMaterial): MaterialState {
@@ -281,55 +282,45 @@ export function FacadeBuilding({
   onPanelsReady,
 }: FacadeBuildingProps) {
   const groupRef = useRef<Group>(null)
-  const { gl, scene: threeScene } = useThree()
+  const { gl, scene: threeScene, invalidate } = useThree()
   const [hovered, setHovered] = useState<string | null>(null)
   const panelRefs = useRef<Mesh[]>([])
-  const woodTextureCache = useRef<Map<string, THREE.Texture>>(new Map())
-  const woodTextureLoading = useRef<Set<string>>(new Set())
-  const patinaTextureCache = useRef<Map<string, THREE.Texture>>(new Map())
-  const patinaTextureLoading = useRef<Set<string>>(new Set())
+  const panelTextureCache = useRef<Map<string, THREE.Texture>>(new Map())
+  const panelTextureLoading = useRef<Set<string>>(new Set())
 
-  // Preload wood panel images by woodPanelId when any panel has wood finish
+  // Re-render the canvas when overrides change so materials don’t wait for another UI event
+  useLayoutEffect(() => {
+    invalidate()
+  }, [appliedMaterials, invalidate])
+
+  // Preload any applied panel textures (all categories under public/Panels/)
   useEffect(() => {
     if (!appliedMaterials?.size) return
-    const cache = woodTextureCache.current
-    const loading = woodTextureLoading.current
+    const cache = panelTextureCache.current
+    const loading = panelTextureLoading.current
     appliedMaterials.forEach((state) => {
-      if (state.finish !== 'wood' || !state.woodPanelId) return
-      const id = state.woodPanelId
-      if (cache.has(id) || loading.has(id)) return
-      loading.add(id)
-      const url = `${WOOD_PANEL_BASE}${id}.png`
+      if (!state.panelTexture) return
+      const url = getPanelTextureUrl(state.panelTexture)
+      if (cache.has(url) || loading.has(url)) return
+      loading.add(url)
       const loader = new THREE.TextureLoader()
-      loader.load(url, (t) => {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping
-        if ('colorSpace' in t) (t as THREE.Texture).colorSpace = THREE.SRGBColorSpace
-        cache.set(id, t)
-        loading.delete(id)
-      }, undefined, () => { loading.delete(id) })
+      loader.load(
+        url,
+        (t) => {
+          t.wrapS = t.wrapT = THREE.RepeatWrapping
+          if ('colorSpace' in t) (t as THREE.Texture).colorSpace = THREE.SRGBColorSpace
+          t.needsUpdate = true
+          cache.set(url, t)
+          loading.delete(url)
+          invalidate()
+        },
+        undefined,
+        () => {
+          loading.delete(url)
+        }
+      )
     })
-  }, [appliedMaterials])
-
-  // Preload patina (Platina) panel images when any panel has patina finish
-  useEffect(() => {
-    if (!appliedMaterials?.size) return
-    const cache = patinaTextureCache.current
-    const loading = patinaTextureLoading.current
-    appliedMaterials.forEach((state) => {
-      if (state.finish !== 'patina' || !state.patinaPanelId) return
-      const id = state.patinaPanelId
-      if (cache.has(id) || loading.has(id)) return
-      loading.add(id)
-      const url = `${PATINA_PANEL_BASE}${id}.png`
-      const loader = new THREE.TextureLoader()
-      loader.load(url, (t) => {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping
-        if ('colorSpace' in t) (t as THREE.Texture).colorSpace = THREE.SRGBColorSpace
-        cache.set(id, t)
-        loading.delete(id)
-      }, undefined, () => { loading.delete(id) })
-    })
-  }, [appliedMaterials])
+  }, [appliedMaterials, invalidate])
 
   useEffect(() => {
     gl.domElement.style.cursor = selectionToolEnabled && hovered ? 'pointer' : 'default'
@@ -380,7 +371,7 @@ export function FacadeBuilding({
   }, [])
 
   const panels = useMemo(() => {
-    const list: { mesh: THREE.Mesh; col: number; row: number }[] = []
+    const list: { mesh: THREE.Mesh; col: number; row: number; stripeIndex: number }[] = []
     const startX = -FACADE_W / 2 + GAP + adjustedPanelW / 2
     const startY = GAP + adjustedPanelH / 2
 
@@ -396,7 +387,7 @@ export function FacadeBuilding({
           mesh.rotation.set(rx, ry, rz + (rotationZ ?? 0))
           mesh.castShadow = true
           mesh.receiveShadow = true
-          list.push({ mesh, col: c, row: r })
+          list.push({ mesh, col: c, row: r, stripeIndex: list.length })
         }
       }
     }
@@ -405,7 +396,9 @@ export function FacadeBuilding({
 
   useEffect(() => {
     panelRefs.current = panels.map((p) => p.mesh)
-    onPanelsReady?.(panels.map((p) => ({ uuid: p.mesh.uuid, row: p.row })))
+    onPanelsReady?.(
+      panels.map((p) => ({ uuid: p.mesh.uuid, row: p.row, stripeIndex: p.stripeIndex }))
+    )
   }, [panels, onPanelsReady])
 
   const handleClick = (e: { stopPropagation: () => void; object: THREE.Object3D }) => {
@@ -419,22 +412,33 @@ export function FacadeBuilding({
 
   useFrame(() => {
     const envMap = threeScene.environment ?? null
-    const woodCache = woodTextureCache.current
-    const patinaCache = patinaTextureCache.current
+    const texCache = panelTextureCache.current
     for (const { mesh } of panels) {
       const mat = mesh.material as MeshStandardMaterial
       const applied = appliedMaterials?.get(mesh.uuid)
       if (applied) {
-        const isWood = applied.finish === 'wood' && applied.woodPanelId
-        const isPatina = applied.finish === 'patina' && applied.patinaPanelId
-        const woodTex = isWood && applied.woodPanelId ? woodCache.get(applied.woodPanelId) : null
-        const patinaTex = isPatina && applied.patinaPanelId ? patinaCache.get(applied.patinaPanelId) : null
-        const panelTex = woodTex ?? patinaTex
-        if ((isWood && woodTex) || (isPatina && patinaTex)) {
-          mat.map = panelTex!
+        const url = applied.panelTexture ? getPanelTextureUrl(applied.panelTexture) : null
+        const panelTex = url ? texCache.get(url) : null
+        if (applied.panelTexture && panelTex) {
+          if (mat.map !== panelTex) {
+            mat.map = panelTex
+            mat.needsUpdate = true
+          }
           mat.color.setHex(0xffffff)
+        } else if (applied.panelTexture && url) {
+          // Texture still loading: tint with palette colour so panels don’t flash white/grey
+          if (mat.map != null) {
+            mat.map = null
+            mat.needsUpdate = true
+          }
+          mat.color.setHex(applied.color)
+          mat.metalness = applied.metalness
+          mat.roughness = applied.roughness
         } else {
-          mat.map = null
+          if (mat.map != null) {
+            mat.map = null
+            mat.needsUpdate = true
+          }
           mat.color.setHex(applied.color)
         }
         mat.metalness = applied.metalness
