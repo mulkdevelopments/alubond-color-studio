@@ -1,5 +1,5 @@
 /**
- * Short mechanical "advance" tick for film-strip scrolling (Web Audio API).
+ * Film-strip scroll feedback: layered mechanical motion (body + sprocket scrape + metal ping).
  * Browsers require a user gesture before audio can play — call unlockFilmAudio() on first tap.
  */
 
@@ -25,7 +25,7 @@ export function unlockFilmAudio(): void {
   if (c?.state === 'suspended') void c.resume()
 }
 
-/** Soft mechanical click while scrolling the film rail. */
+/** Mechanical advance: low moving mass + short grit + tiny metal hit (not tonal / “voicey”). */
 export function playFilmAdvanceTick(): void {
   const now = performance.now()
   if (now - lastTickAt < MIN_MS) return
@@ -35,26 +35,58 @@ export function playFilmAdvanceTick(): void {
   if (!c || c.state !== 'running') return
 
   const t0 = c.currentTime
-  const osc = c.createOscillator()
-  const gain = c.createGain()
-  const filter = c.createBiquadFilter()
+  const master = c.createGain()
+  master.gain.value = 0.82
+  master.connect(c.destination)
 
-  osc.type = 'square'
-  osc.frequency.setValueAtTime(320, t0)
-  osc.frequency.exponentialRampToValueAtTime(90, t0 + 0.04)
+  // Body: triangle mass sliding/seating, pitch drops as it settles
+  const body = c.createOscillator()
+  body.type = 'triangle'
+  body.frequency.setValueAtTime(168, t0)
+  body.frequency.exponentialRampToValueAtTime(52, t0 + 0.036)
+  const bodyG = c.createGain()
+  bodyG.gain.setValueAtTime(0, t0)
+  bodyG.gain.linearRampToValueAtTime(0.1, t0 + 0.0018)
+  bodyG.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.05)
+  body.connect(bodyG)
+  bodyG.connect(master)
+  body.start(t0)
+  body.stop(t0 + 0.054)
 
-  filter.type = 'bandpass'
-  filter.frequency.value = 420
-  filter.Q.value = 0.9
+  // Grit: very short band-pass noise ≈ sprocket teeth / rail
+  const len = Math.floor(c.sampleRate * 0.028)
+  const buf = c.createBuffer(1, len, c.sampleRate)
+  const data = buf.getChannelData(0)
+  for (let i = 0; i < len; i++) {
+    data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 0.6
+  }
+  const noise = c.createBufferSource()
+  noise.buffer = buf
+  const bp = c.createBiquadFilter()
+  bp.type = 'bandpass'
+  bp.frequency.value = 2100
+  bp.Q.value = 2.4
+  const nG = c.createGain()
+  nG.gain.setValueAtTime(0, t0)
+  nG.gain.linearRampToValueAtTime(0.065, t0 + 0.0006)
+  nG.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.019)
+  noise.connect(bp)
+  bp.connect(nG)
+  nG.connect(master)
+  noise.start(t0)
+  noise.stop(t0 + 0.028)
 
-  gain.gain.setValueAtTime(0, t0)
-  gain.gain.linearRampToValueAtTime(0.055, t0 + 0.008)
-  gain.gain.linearRampToValueAtTime(0, t0 + 0.05)
-
-  osc.connect(filter)
-  filter.connect(gain)
-  gain.connect(c.destination)
-
-  osc.start(t0)
-  osc.stop(t0 + 0.06)
+  // Ping: brief sine decay = small metal contact
+  const ping = c.createOscillator()
+  ping.type = 'sine'
+  ping.frequency.setValueAtTime(2400, t0)
+  ping.frequency.exponentialRampToValueAtTime(720, t0 + 0.022)
+  const pingG = c.createGain()
+  pingG.gain.setValueAtTime(0, t0)
+  pingG.gain.linearRampToValueAtTime(0.022, t0 + 0.0004)
+  pingG.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.026)
+  ping.connect(pingG)
+  pingG.connect(master)
+  ping.start(t0)
+  ping.stop(t0 + 0.03)
 }
