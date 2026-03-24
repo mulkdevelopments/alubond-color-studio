@@ -1,20 +1,17 @@
+import { useEffect } from 'react'
 import type { Theme } from '../theme'
 import { getThemeTokens, brand, glassChrome } from '../theme'
 import type { FacadeSettings, PanelTransform, TypologyType } from './FacadeBuilding'
 import type { AlubondColor } from '../types'
 
-/** Competitor-aligned order: square, triangle, 2 diagonals, diamond, X, vertical/horizontal line, 2 vert, 2 horiz */
-const TYPOLOGY_ORDER: TypologyType[] = [
+/** Only these typologies are exposed in the UI. */
+const VISIBLE_TYPOLOGIES: TypologyType[] = [
   'square',
   'triangleDown',
   'diagonal',
-  'diagonalTR',
-  'diamond',
-  'x',
-  'verticalLine',
-  'horizontalLine',
-  'twoVertical',
-  'twoHorizontal',
+  'thickBottomLip',
+  'doubleDepthBottom',
+  'centerDepth4x',
 ]
 
 function TypologyIcon({ type, active, color }: { type: TypologyType; active: boolean; color: string }) {
@@ -25,8 +22,15 @@ function TypologyIcon({ type, active, color }: { type: TypologyType; active: boo
   switch (type) {
     case 'square':
       return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="0.5" /></svg>
-    case 'diagonal':
-      return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="0.5" /><line x1="4" y1="4" x2="20" y2="20" /></svg>
+    case 'diagonal': {
+      const wide = { width: 28, height: size, viewBox: '0 0 28 24' as const }
+      return (
+        <svg {...wide} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="22" height="16" rx="0.5" />
+          <line x1="3" y1="4" x2="25" y2="20" />
+        </svg>
+      )
+    }
     case 'diagonalTR':
       return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="0.5" /><line x1="20" y1="4" x2="4" y2="20" /></svg>
     case 'verticalLine':
@@ -52,6 +56,31 @@ function TypologyIcon({ type, active, color }: { type: TypologyType; active: boo
       return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="0.5" /><line x1="4" y1="4" x2="20" y2="20" /><line x1="20" y1="4" x2="4" y2="20" /></svg>
     case 'grid2x2':
       return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="0.5" /><line x1="12" y1="4" x2="12" y2="20" /><line x1="4" y1="12" x2="20" y2="12" /></svg>
+    case 'thickBottomLip':
+      return (
+        <svg {...common}>
+          <rect x="4" y="4" width="16" height="16" rx="0.5" />
+          <path
+            fill={active ? color : 'currentColor'}
+            stroke="none"
+            d="M5 14h14v5H5z"
+            opacity={active ? 1 : 0.85}
+          />
+        </svg>
+      )
+    case 'doubleDepthBottom':
+      return (
+        <svg {...common}>
+          <path d="M6 5 L6 19 L20 19 L10 5 Z" />
+        </svg>
+      )
+    case 'centerDepth4x':
+      return (
+        <svg {...common}>
+          {/* Side view: flat back (left), depth peaks at mid-height (right) */}
+          <path d="M5 6 L5 18 L18 12 Z" />
+        </svg>
+      )
     case 'triangleDown':
       return <svg {...common}><path d="M12 4l8 16H4L12 4z" /></svg>
     case 'triangleRight':
@@ -115,6 +144,14 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
   const t = getThemeTokens(theme)
   const isVertical = layout === 'vertical'
 
+  useEffect(() => {
+    if (!VISIBLE_TYPOLOGIES.includes(settings.typology)) {
+      onChange({ ...settings, typology: 'square' })
+    }
+    // Only when typology is invalid; spread needs current settings snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally not re-run on every settings field
+  }, [settings.typology])
+
   const sectionLabelStyle: React.CSSProperties = {
     fontSize: 9,
     fontWeight: 600,
@@ -166,8 +203,9 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
   )
 
   const typologyBtn = (typ: TypologyType): React.CSSProperties => ({
-    width: 32,
+    width: typ === 'diagonal' ? 44 : 32,
     height: 32,
+    minWidth: typ === 'diagonal' ? 44 : 32,
     padding: 0,
     display: 'flex',
     alignItems: 'center',
@@ -180,110 +218,33 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
     transition: 'all 0.15s ease',
   })
 
-  const stepperWrap: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 0,
-    border: `1px solid ${t.border}`,
-    borderRadius: 10,
-    background: t.sidebarBg ?? 'rgba(255,255,255,0.04)',
-    overflow: 'hidden',
-  }
-  const stepperInput: React.CSSProperties = {
-    width: 32,
-    height: 32,
-    padding: 0,
-    border: 'none',
-    background: 'transparent',
-    color: t.text,
-    fontSize: 14,
-    fontWeight: 700,
-    textAlign: 'center',
-    outline: 'none',
-  }
-  const stepperArrow: React.CSSProperties = {
-    width: 24,
-    height: 16,
-    padding: 0,
-    border: 'none',
-    borderLeft: `1px solid ${t.border}`,
-    background: 'transparent',
-    color: t.textMuted,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 10,
-  }
-
   const content = (
     <>
       {sectionBlock('Style & Typology', (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Row 1: first 5 icons (competitor layout) */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {TYPOLOGY_ORDER.slice(0, 5).map((typ) => (
-              <button
-                key={typ}
-                type="button"
-                title={typ}
-                onClick={() => onChange({ ...settings, typology: typ })}
-                style={typologyBtn(typ)}
-              >
-                <TypologyIcon type={typ} active={settings.typology === typ} color="#fff" />
-              </button>
-            ))}
-          </div>
-          {/* Row 2: next 5 icons */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {TYPOLOGY_ORDER.slice(5, 10).map((typ) => (
-              <button
-                key={typ}
-                type="button"
-                title={typ}
-                onClick={() => onChange({ ...settings, typology: typ })}
-                style={typologyBtn(typ)}
-              >
-                <TypologyIcon type={typ} active={settings.typology === typ} color="#fff" />
-              </button>
-            ))}
-          </div>
-          {/* Typology label + stepper (competitor: "typologie 1.") */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, color: t.textMuted }}>Typology {settings.typologyParam}.</span>
-            <div style={stepperWrap}>
-              <input
-                type="number"
-                min={1}
-                max={9}
-                value={settings.typologyParam}
-                onChange={(e) => {
-                  const v = Math.min(9, Math.max(1, Number(e.target.value) || 1))
-                  onChange({ ...settings, typologyParam: v })
-                }}
-                style={stepperInput}
-                aria-label="Typology parameter"
-              />
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <button
-                  type="button"
-                  onClick={() => onChange({ ...settings, typologyParam: Math.min(9, settings.typologyParam + 1) })}
-                  style={{ ...stepperArrow, borderLeft: 'none', borderBottom: `1px solid ${t.border}` }}
-                  aria-label="Increment"
-                >
-                  ▲
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onChange({ ...settings, typologyParam: Math.max(1, settings.typologyParam - 1) })}
-                  style={stepperArrow}
-                  aria-label="Decrement"
-                >
-                  ▼
-                </button>
-              </div>
-            </div>
-          </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {VISIBLE_TYPOLOGIES.map((typ) => (
+            <button
+              key={typ}
+              type="button"
+              title={
+                typ === 'centerDepth4x'
+                  ? 'Tapered panel — depth 4× at vertical center (edges nominal)'
+                  : typ === 'doubleDepthBottom'
+                    ? 'Tapered panel — bottom depth 4× the top'
+                    : typ === 'thickBottomLip'
+                      ? 'Horizontal cassette — thick bottom reveal'
+                      : typ === 'square'
+                        ? 'Square panel'
+                        : typ === 'triangleDown'
+                          ? 'Triangle'
+                          : 'Diagonal split'
+              }
+              onClick={() => onChange({ ...settings, typology: typ })}
+              style={typologyBtn(typ)}
+            >
+              <TypologyIcon type={typ} active={settings.typology === typ} color="#fff" />
+            </button>
+          ))}
         </div>
       ))}
       {divider()}

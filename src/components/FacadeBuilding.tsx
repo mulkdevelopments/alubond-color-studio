@@ -26,6 +26,12 @@ export type TypologyType =
   | 'triangleRight'
   | 'triangleLeft'
   | 'grid3x3'
+  /** Full cell with a thicker horizontal band at the bottom projecting forward (cassette / reveal). */
+  | 'thickBottomLip'
+  /** Single cell: panel depth tapers top→bottom; bottom extrusion depth is 4× the top (flat back, sloped outer face). */
+  | 'doubleDepthBottom'
+  /** Single cell: extrusion depth is 4× nominal at vertical center, tapering linearly to nominal at top and bottom edges. */
+  | 'centerDepth4x'
 
 export interface FacadeSettings {
   columns: number
@@ -102,15 +108,218 @@ function makePanelMaterial(): MeshStandardMaterial {
   })
 }
 
+/**
+ * Maps palette textures in façade space: same (u,v) as a full cell rectangle, using vertex (x,y) in mesh-local
+ * space plus the mesh’s cell offset. Fixes missing/bad UVs on extrudes and custom BufferGeometry.
+ */
+function applyFacadeCellPlanarUVs(
+  geo: THREE.BufferGeometry,
+  cellW: number,
+  cellH: number,
+  meshOffsetY = 0,
+  meshOffsetX = 0
+): void {
+  const pos = geo.getAttribute('position')
+  if (!pos || pos.count === 0) return
+  const n = pos.count
+  const uvs = new Float32Array(n * 2)
+  const invW = cellW > 1e-8 ? 1 / cellW : 1
+  const invH = cellH > 1e-8 ? 1 / cellH : 1
+  for (let i = 0; i < n; i++) {
+    const xCell = meshOffsetX + pos.getX(i)
+    const yCell = meshOffsetY + pos.getY(i)
+    uvs[i * 2] = (xCell + cellW / 2) * invW
+    uvs[i * 2 + 1] = (yCell + cellH / 2) * invH
+  }
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+}
+
+/**
+ * Frustum between main face (front at +d/2) and lip front (z = zLipFront), same back plane z = -d/2.
+ * Fills the vertical gap so the outer skin ramps instead of a hard step; normals are averaged for smooth light falloff.
+ */
+function createCassetteBlendGeometry(w: number, blendH: number, d: number, zLipFront: number): THREE.BufferGeometry {
+  const hw = w / 2
+  const hb = blendH / 2
+  const positions = new Float32Array([
+    -hw, hb, -d / 2,
+    hw, hb, -d / 2,
+    hw, hb, d / 2,
+    -hw, hb, d / 2,
+    -hw, -hb, -d / 2,
+    hw, -hb, -d / 2,
+    hw, -hb, zLipFront,
+    -hw, -hb, zLipFront,
+  ])
+  const indices = [
+    0, 1, 2, 0, 2, 3,
+    4, 5, 6, 4, 6, 7,
+    0, 4, 5, 0, 5, 1,
+    3, 2, 6, 3, 6, 7,
+    0, 3, 7, 0, 7, 4,
+    1, 5, 6, 1, 6, 2,
+  ]
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setIndex(indices)
+  geo.computeVertexNormals()
+  return geo
+}
+
+/** Flat vertical back (same plane as standard `dTop` panels); outer face ramps so depth is `dTop` at top and `dBottom` at bottom. */
+function createLinearTaperDepthGeometry(w: number, h: number, dTop: number, dBottom: number): THREE.BufferGeometry {
+  const hw = w / 2
+  const hh = h / 2
+  const zBack = -dTop / 2
+  const zFrontTop = zBack + dTop
+  const zFrontBot = zBack + dBottom
+  const positions = new Float32Array([
+    -hw, hh, zBack,
+    hw, hh, zBack,
+    hw, hh, zFrontTop,
+    -hw, hh, zFrontTop,
+    -hw, -hh, zBack,
+    hw, -hh, zBack,
+    hw, -hh, zFrontBot,
+    -hw, -hh, zFrontBot,
+  ])
+  const indices = [
+    0, 1, 2, 0, 2, 3,
+    4, 6, 5, 4, 7, 6,
+    0, 4, 5, 0, 5, 1,
+    3, 2, 6, 3, 6, 7,
+    0, 3, 7, 0, 7, 4,
+    1, 5, 6, 1, 6, 2,
+  ]
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setIndex(indices)
+  geo.computeVertexNormals()
+  return geo
+}
+
+/**
+ * Flat back (z = −dEdge/2); front depth varies with |y|: `dEdge` at y = ±h/2, `dEdge * peakMult` at y = 0 (linear in |y|).
+ */
+function createCenterPeakDepthGeometry(
+  w: number,
+  h: number,
+  dEdge: number,
+  peakMult: number,
+  ringSegments: number
+): THREE.BufferGeometry {
+  const hw = w / 2
+  const hh = h / 2
+  const zb = -dEdge / 2
+  const segs = Math.max(8, ringSegments)
+  const rings = segs + 1
+  const positions: number[] = []
+  const indices: number[] = []
+
+  const depthAtY = (y: number) => {
+    const t = Math.abs(y) / hh
+    return dEdge * (peakMult - (peakMult - 1) * t)
+  }
+
+  for (let i = 0; i < rings; i++) {
+    const y = -hh + (i / segs) * h
+    const zf = zb + depthAtY(y)
+    positions.push(-hw, y, zb, hw, y, zb, hw, y, zf, -hw, y, zf)
+  }
+
+  const v = (ring: number, corner: number) => ring * 4 + corner
+
+  for (let i = 0; i < segs; i++) {
+    const bi = v(i, 0)
+    indices.push(bi + 0, bi + 4, bi + 5, bi + 0, bi + 5, bi + 1)
+    indices.push(bi + 2, bi + 3, bi + 7, bi + 2, bi + 7, bi + 6)
+    indices.push(bi + 0, bi + 4, bi + 7, bi + 0, bi + 7, bi + 3)
+    indices.push(bi + 1, bi + 5, bi + 6, bi + 1, bi + 6, bi + 2)
+  }
+
+  const b0 = 0
+  indices.push(b0 + 0, b0 + 1, b0 + 2, b0 + 0, b0 + 2, b0 + 3)
+
+  const bt = v(segs, 0)
+  indices.push(bt + 1, bt + 0, bt + 3, bt + 1, bt + 3, bt + 2)
+
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setIndex(indices)
+  geo.computeVertexNormals()
+  return geo
+}
+
+/** Triangular prism: vertices A,B,C in XY, CCW from +Z; extruded z ∈ [−d/2, d/2]. */
+function createTriangularPrismGeometry(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  d: number
+): THREE.BufferGeometry {
+  const z0 = -d / 2
+  const z1 = d / 2
+  const positions = new Float32Array([
+    ax, ay, z0,
+    bx, by, z0,
+    cx, cy, z0,
+    ax, ay, z1,
+    bx, by, z1,
+    cx, cy, z1,
+  ])
+  const indices = [
+    0, 2, 1,
+    3, 4, 5,
+    0, 1, 4, 0, 4, 3,
+    1, 2, 5, 1, 5, 4,
+    2, 0, 3, 2, 3, 5,
+  ]
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setIndex(indices)
+  geo.computeVertexNormals()
+  return geo
+}
+
+function createDiagonalSplitGeometries(w: number, h: number, d: number): [THREE.BufferGeometry, THREE.BufferGeometry] {
+  const bl: [number, number] = [-w / 2, -h / 2]
+  const br: [number, number] = [w / 2, -h / 2]
+  const tr: [number, number] = [w / 2, h / 2]
+  const tl: [number, number] = [-w / 2, h / 2]
+  const gLower = createTriangularPrismGeometry(bl[0], bl[1], br[0], br[1], tr[0], tr[1], d)
+  const gUpper = createTriangularPrismGeometry(bl[0], bl[1], tr[0], tr[1], tl[0], tl[1], d)
+  return [gLower, gUpper]
+}
+
+/** Up-pointing triangle plus left/right top-corner prisms (down-pointing from the top edge), filling the cell rectangle. */
+function createTriangleColumnStackGeometries(
+  w: number,
+  h: number,
+  d: number
+): [THREE.BufferGeometry, THREE.BufferGeometry, THREE.BufferGeometry] {
+  const bl: [number, number] = [-w / 2, -h / 2]
+  const br: [number, number] = [w / 2, -h / 2]
+  const apex: [number, number] = [0, h / 2]
+  const tl: [number, number] = [-w / 2, h / 2]
+  const tr: [number, number] = [w / 2, h / 2]
+  const gUp = createTriangularPrismGeometry(bl[0], bl[1], br[0], br[1], apex[0], apex[1], d)
+  const gLeftInv = createTriangularPrismGeometry(apex[0], apex[1], tl[0], tl[1], bl[0], bl[1], d)
+  const gRightInv = createTriangularPrismGeometry(apex[0], apex[1], tr[0], tr[1], br[0], br[1], d)
+  return [gUp, gLeftInv, gRightInv]
+}
+
 /** Create one or more panel meshes for a single cell. Offsets are in cell-local space (cell center = 0,0). */
 function createCellMeshes(
   typology: TypologyType,
   _typologyParam: number,
   w: number,
   h: number
-): { mesh: THREE.Mesh; offsetX: number; offsetY: number; rotationZ?: number }[] {
+): { mesh: THREE.Mesh; offsetX: number; offsetY: number; rotationZ?: number; offsetZ?: number }[] {
   const d = PANEL_DEPTH
-  const out: { mesh: THREE.Mesh; offsetX: number; offsetY: number; rotationZ?: number }[] = []
+  const out: { mesh: THREE.Mesh; offsetX: number; offsetY: number; rotationZ?: number; offsetZ?: number }[] = []
 
   switch (typology) {
     case 'square': {
@@ -133,15 +342,12 @@ function createCellMeshes(
       break
     }
     case 'diagonal': {
-      const shape1 = new THREE.Shape().moveTo(-w / 2, -h / 2).lineTo(w / 2, -h / 2).lineTo(w / 2, h / 2).closePath()
-      const shape2 = new THREE.Shape().moveTo(-w / 2, -h / 2).lineTo(w / 2, h / 2).lineTo(-w / 2, h / 2).closePath()
-      const extrude = { depth: d, bevelEnabled: false }
-      const g1 = new THREE.ExtrudeGeometry(shape1, extrude)
-      const g2 = new THREE.ExtrudeGeometry(shape2, extrude)
-      g1.translate(0, 0, -d / 2)
-      g2.translate(0, 0, -d / 2)
-      out.push({ mesh: new THREE.Mesh(g1, makePanelMaterial()), offsetX: 0, offsetY: 0 })
-      out.push({ mesh: new THREE.Mesh(g2, makePanelMaterial()), offsetX: 0, offsetY: 0 })
+      const [gLower, gUpper] = createDiagonalSplitGeometries(w, h, d)
+      const matLower = makePanelMaterial()
+      const matUpper = makePanelMaterial()
+      matLower.color.multiplyScalar(0.88)
+      out.push({ mesh: new THREE.Mesh(gLower, matLower), offsetX: 0, offsetY: 0 })
+      out.push({ mesh: new THREE.Mesh(gUpper, matUpper), offsetX: 0, offsetY: 0 })
       break
     }
     case 'diagonalTR': {
@@ -234,10 +440,15 @@ function createCellMeshes(
       break
     }
     case 'triangleDown': {
-      const shape = new THREE.Shape().moveTo(0, h / 2).lineTo(w / 2, -h / 2).lineTo(-w / 2, -h / 2).closePath()
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false })
-      geo.translate(0, 0, -d / 2)
-      out.push({ mesh: new THREE.Mesh(geo, makePanelMaterial()), offsetX: 0, offsetY: 0 })
+      const [gUp, gLeft, gRight] = createTriangleColumnStackGeometries(w, h, d)
+      const matUp = makePanelMaterial()
+      const matInv = makePanelMaterial()
+      matInv.color.multiplyScalar(0.9)
+      out.push({ mesh: new THREE.Mesh(gUp, matUp), offsetX: 0, offsetY: 0 })
+      out.push({ mesh: new THREE.Mesh(gLeft, matInv), offsetX: 0, offsetY: 0 })
+      const matInvR = makePanelMaterial()
+      matInvR.color.multiplyScalar(0.9)
+      out.push({ mesh: new THREE.Mesh(gRight, matInvR), offsetX: 0, offsetY: 0 })
       break
     }
     case 'triangleRight': {
@@ -266,9 +477,47 @@ function createCellMeshes(
       out.push({ mesh: new THREE.Mesh(geo, makePanelMaterial()), offsetX: 0, offsetY: 0 })
       break
     }
+    case 'doubleDepthBottom': {
+      const dTop = d
+      const dBottom = d * 4
+      const geo = createLinearTaperDepthGeometry(w, h, dTop, dBottom)
+      out.push({ mesh: new THREE.Mesh(geo, makePanelMaterial()), offsetX: 0, offsetY: 0 })
+      break
+    }
+    case 'centerDepth4x': {
+      const geo = createCenterPeakDepthGeometry(w, h, d, 4, 32)
+      out.push({ mesh: new THREE.Mesh(geo, makePanelMaterial()), offsetX: 0, offsetY: 0 })
+      break
+    }
+    case 'thickBottomLip': {
+      const lipFrac = 0.2
+      const lipH = Math.max(h * lipFrac, 0.05)
+      const lipD = d * 2.35
+      const zLipFront = lipD - d / 2
+      const maxBlend = Math.max(h - lipH - h * 0.1, 0.04)
+      const blendH = Math.min(Math.max(lipH * 0.55, h * 0.032), maxBlend)
+      const mainH = h - lipH - blendH
+      const main = new THREE.Mesh(new THREE.BoxGeometry(w, mainH, d), makePanelMaterial())
+      const blend = new THREE.Mesh(createCassetteBlendGeometry(w, blendH, d, zLipFront), makePanelMaterial())
+      const lip = new THREE.Mesh(new THREE.BoxGeometry(w, lipH, lipD), makePanelMaterial())
+      const mainOffsetY = (lipH + blendH) / 2
+      const blendOffsetY = -h / 2 + lipH + blendH / 2
+      const lipOffsetY = -h / 2 + lipH / 2
+      const lipOffsetZ = (lipD - d) / 2
+      out.push({ mesh: main, offsetX: 0, offsetY: mainOffsetY })
+      out.push({ mesh: blend, offsetX: 0, offsetY: blendOffsetY })
+      out.push({ mesh: lip, offsetX: 0, offsetY: lipOffsetY, offsetZ: lipOffsetZ })
+      break
+    }
     default: {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), makePanelMaterial())
       out.push({ mesh, offsetX: 0, offsetY: 0 })
+    }
+  }
+  if (typology !== 'square') {
+    for (const { mesh, offsetX, offsetY } of out) {
+      const g = mesh.geometry as THREE.BufferGeometry
+      if (g) applyFacadeCellPlanarUVs(g, w, h, offsetY, offsetX)
     }
   }
   return out
@@ -328,8 +577,11 @@ export function FacadeBuilding({
 
   const { columns, rows, style, transform, tiltAngle, typology, typologyParam } = settings
 
-  const panelW = (FACADE_W - GAP * (columns + 1)) / columns
-  const panelH = (FACADE_H - GAP * (rows + 1)) / rows
+  /** Upward triangles share bottom corners / stacked apexes; normal GAP would show as dark strips between cells. */
+  const cellGap = typology === 'triangleDown' ? 0 : GAP
+
+  const panelW = (FACADE_W - cellGap * (columns + 1)) / columns
+  const panelH = (FACADE_H - cellGap * (rows + 1)) / rows
 
   const adjustedPanelW = style === 'portrait' ? panelW * 0.6 : style === 'square' ? Math.min(panelW, panelH) : panelW
   const adjustedPanelH = style === 'portrait' ? panelH : style === 'square' ? Math.min(panelW, panelH) : panelH
@@ -372,27 +624,29 @@ export function FacadeBuilding({
 
   const panels = useMemo(() => {
     const list: { mesh: THREE.Mesh; col: number; row: number; stripeIndex: number }[] = []
-    const startX = -FACADE_W / 2 + GAP + adjustedPanelW / 2
-    const startY = GAP + adjustedPanelH / 2
+    const startX = -FACADE_W / 2 + cellGap + adjustedPanelW / 2
+    const startY = cellGap + adjustedPanelH / 2
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < columns; c++) {
-        const baseX = startX + c * (adjustedPanelW + GAP)
-        const baseY = startY + r * (adjustedPanelH + GAP)
+        const baseX = startX + c * (adjustedPanelW + cellGap)
+        const baseY = startY + r * (adjustedPanelH + cellGap)
         const [rx, ry, rz] = getPanelRotation(c, r, columns, rows, transform, tiltAngle)
 
         const cellMeshes = createCellMeshes(typology, typologyParam, adjustedPanelW, adjustedPanelH)
-        for (const { mesh, offsetX, offsetY, rotationZ } of cellMeshes) {
-          mesh.position.set(baseX + offsetX, baseY + offsetY, DEPTH / 2 + PANEL_DEPTH / 2)
+        const baseZ = DEPTH / 2 + PANEL_DEPTH / 2
+        for (const { mesh, offsetX, offsetY, rotationZ, offsetZ } of cellMeshes) {
+          mesh.position.set(baseX + offsetX, baseY + offsetY, baseZ + (offsetZ ?? 0))
           mesh.rotation.set(rx, ry, rz + (rotationZ ?? 0))
           mesh.castShadow = true
           mesh.receiveShadow = true
+          if (typology === 'diagonal' || typology === 'triangleDown') mesh.userData.cellGroupKey = `${c}-${r}`
           list.push({ mesh, col: c, row: r, stripeIndex: list.length })
         }
       }
     }
     return list
-  }, [columns, rows, adjustedPanelW, adjustedPanelH, transform, tiltAngle, typology, typologyParam])
+  }, [columns, rows, adjustedPanelW, adjustedPanelH, cellGap, transform, tiltAngle, typology, typologyParam])
 
   useEffect(() => {
     panelRefs.current = panels.map((p) => p.mesh)
@@ -413,6 +667,10 @@ export function FacadeBuilding({
   useFrame(() => {
     const envMap = threeScene.environment ?? null
     const texCache = panelTextureCache.current
+    const hoveredCellGroupKey =
+      hovered != null
+        ? (panels.find((p) => p.mesh.uuid === hovered)?.mesh.userData as { cellGroupKey?: string })?.cellGroupKey
+        : null
     for (const { mesh } of panels) {
       const mat = mesh.material as MeshStandardMaterial
       const applied = appliedMaterials?.get(mesh.uuid)
@@ -450,7 +708,12 @@ export function FacadeBuilding({
           mat.envMapIntensity = 1
         }
       }
-      if (hovered === mesh.uuid) mat.emissive?.setHex(0x222222)
+      const cellGroupKey = (mesh.userData as { cellGroupKey?: string }).cellGroupKey
+      const hoverGlow =
+        hovered != null &&
+        (mesh.uuid === hovered ||
+          (cellGroupKey != null && cellGroupKey === hoveredCellGroupKey))
+      if (hoverGlow) mat.emissive?.setHex(0x222222)
       else mat.emissive?.setHex(0x000000)
     }
   })
