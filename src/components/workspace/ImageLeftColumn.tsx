@@ -6,6 +6,7 @@ export function ImageLeftColumn({
   theme,
   uploadedImage,
   selectedColor,
+  selectedCount = 1,
   isProcessing,
   error,
   dragActive,
@@ -24,6 +25,8 @@ export function ImageLeftColumn({
   /** True when AI generation produced a result (enables Download) */
   hasResult: boolean
   selectedColor: AlubondColor | null
+  /** Number of swatches selected in the film strip (for button label). */
+  selectedCount?: number
   isProcessing: boolean
   error: string | null
   dragActive: boolean
@@ -134,7 +137,7 @@ export function ImageLeftColumn({
           <p style={{ margin: 0, padding: '0 2px', fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>
             {canGenerate
               ? 'Open options to review references and API settings, then generate.'
-              : 'Select any finish or fusion swatch in the film strip below to enable Generate.'}
+              : 'Select one or more finishes in the film strip below to enable Generate (multi-select applies a mixed façade in the prompt).'}
           </p>
           {canGenerate && (
             <button
@@ -154,7 +157,11 @@ export function ImageLeftColumn({
                 cursor: isProcessing ? 'not-allowed' : 'pointer',
               }}
             >
-              {isProcessing ? 'Generating…' : `Generate · ${selectedColor?.name ?? 'Finish'}`}
+              {isProcessing
+                ? 'Generating…'
+                : selectedCount > 1
+                  ? `Generate · ${selectedCount} finishes`
+                  : `Generate · ${selectedColor?.name ?? 'Finish'}`}
             </button>
           )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, paddingTop: 2 }}>

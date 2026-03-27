@@ -12,7 +12,7 @@ export function IfcLeftColumn({
   selectionToolEnabled,
   onToggleSelection,
   meshCount,
-  selectedColor,
+  selectedColors,
   onApplyAllSurfaces,
 }: {
   theme: Theme
@@ -24,7 +24,7 @@ export function IfcLeftColumn({
   selectionToolEnabled: boolean
   onToggleSelection: () => void
   meshCount: number
-  selectedColor: AlubondColor | null
+  selectedColors: AlubondColor[]
   onApplyAllSurfaces: () => void
 }) {
   const t = getThemeTokens(theme)
@@ -143,7 +143,7 @@ export function IfcLeftColumn({
               e.stopPropagation()
               onApplyAllSurfaces()
             }}
-            disabled={!selectedColor || meshCount === 0}
+            disabled={selectedColors.length === 0 || meshCount === 0}
             style={{
               width: '100%',
               boxSizing: 'border-box',
@@ -153,10 +153,10 @@ export function IfcLeftColumn({
               borderRadius: 12,
               border: 'none',
               background:
-                !selectedColor || meshCount === 0 ? glassChrome.borderSoft : brand.orange,
+                selectedColors.length === 0 || meshCount === 0 ? glassChrome.borderSoft : brand.orange,
               color: '#fff',
-              cursor: !selectedColor || meshCount === 0 ? 'not-allowed' : 'pointer',
-              opacity: !selectedColor || meshCount === 0 ? 0.55 : 1,
+              cursor: selectedColors.length === 0 || meshCount === 0 ? 'not-allowed' : 'pointer',
+              opacity: selectedColors.length === 0 || meshCount === 0 ? 0.55 : 1,
             }}
           >
             Apply to all surfaces
@@ -171,8 +171,19 @@ export function IfcLeftColumn({
               lineHeight: 1.5,
             }}
           >
-            Uses the colour selected in the film strip. Fusion finishes map in horizontal bands and sweep along each
-            band—similar to façade courses—then repeat textures in sequence for multi-panel fusion.
+            {selectionToolEnabled ? (
+              <>
+                <strong style={{ color: t.text }}>Surface mode</strong> — only one library swatch at a time. Pick a
+                finish in the strip, then click meshes to paint. Turn selection off to multi-select swatches and use{' '}
+                <strong style={{ color: t.text }}>Apply to all surfaces</strong> with your palette layout.
+              </>
+            ) : (
+              <>
+                Uses all swatches selected in the film strip (mapping follows your Facade Maker palette layout). Fusion
+                finishes use row/band rhythm like the procedural façade. Turn on selection above to paint one surface at
+                a time with a single finish.
+              </>
+            )}
           </p>
           <p
             style={{
@@ -184,8 +195,8 @@ export function IfcLeftColumn({
               lineHeight: 1.5,
             }}
           >
-            Pick a colour below, then use <strong style={{ color: t.text }}>Apply to all</strong> or turn on selection
-            and click individual surfaces.
+            Pick colours in the film strip below, then <strong style={{ color: t.text }}>Apply to all</strong> or use
+            surface selection.
           </p>
         </>
       ) : (

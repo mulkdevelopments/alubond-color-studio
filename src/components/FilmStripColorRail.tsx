@@ -6,21 +6,20 @@ import { getFinishLabel } from '../data/palettes'
 import { getPanelTextureUrl } from '../utils/panelTextureUrl'
 import { getFusionTextureCycle } from '../utils/fusionPanelCycle'
 import { playFilmAdvanceTick, unlockFilmAudio } from '../utils/filmStripSound'
-import { SkuBarcode } from './SkuBarcode'
+import { SkuQrCode } from './SkuQrCode'
 import { PaletteSkuDetailDialog } from './PaletteSkuDetailDialog'
 
 interface FilmStripColorRailProps {
   theme: Theme
   colours: AlubondColor[]
-  selectedColor: AlubondColor | null
-  onSelectColor: (color: AlubondColor | null) => void
-  isSameColor: (a: AlubondColor | null, b: AlubondColor | null) => boolean
+  selectedColors: AlubondColor[]
+  onTogglePaletteColor: (color: AlubondColor) => void
   /** `topDock` = compact header bar; `bottomBar` = full-size film for fixed bottom dock; `panel` = sidebar rail */
   variant?: 'panel' | 'topDock' | 'bottomBar'
 }
 
 /** Top / bottom sprocket row — old 35mm-style perforations */
-function SprocketRow({ compact }: { compact?: boolean }) {
+function SprocketRow({ compact, isLight }: { compact?: boolean; isLight: boolean }) {
   const h = compact ? 6 : 11
   return (
     <div
@@ -28,8 +27,18 @@ function SprocketRow({ compact }: { compact?: boolean }) {
       style={{
         height: h,
         flexShrink: 0,
-        background: '#0a0a0a',
-        backgroundImage: `repeating-linear-gradient(
+        background: isLight ? '#d8dee9' : '#0a0a0a',
+        backgroundImage: isLight
+          ? `repeating-linear-gradient(
+          90deg,
+          transparent 0,
+          transparent 9px,
+          rgba(27,45,91,0.08) 9px,
+          rgba(27,45,91,0.08) 10px,
+          transparent 10px,
+          transparent 22px
+        )`
+          : `repeating-linear-gradient(
           90deg,
           transparent 0,
           transparent 9px,
@@ -38,7 +47,9 @@ function SprocketRow({ compact }: { compact?: boolean }) {
           transparent 10px,
           transparent 22px
         )`,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+        boxShadow: isLight
+          ? 'inset 0 1px 0 rgba(255,255,255,0.65)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.06)',
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -47,7 +58,15 @@ function SprocketRow({ compact }: { compact?: boolean }) {
         style={{
           position: 'absolute',
           inset: '2px 0',
-          backgroundImage: `repeating-linear-gradient(
+          backgroundImage: isLight
+            ? `repeating-linear-gradient(
+            90deg,
+            #c5ccd8 0,
+            #c5ccd8 5px,
+            transparent 5px,
+            transparent 14px
+          )`
+            : `repeating-linear-gradient(
             90deg,
             #1a1a1a 0,
             #1a1a1a 5px,
@@ -66,12 +85,12 @@ function SprocketRow({ compact }: { compact?: boolean }) {
 export function FilmStripColorRail({
   theme,
   colours,
-  selectedColor,
-  onSelectColor,
-  isSameColor,
+  selectedColors,
+  onTogglePaletteColor,
   variant = 'panel',
 }: FilmStripColorRailProps) {
   const t = getThemeTokens(theme)
+  const isLight = theme === 'light'
   const dock = variant === 'topDock'
   const bottomBar = variant === 'bottomBar'
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -93,7 +112,7 @@ export function FilmStripColorRail({
     }
   }, [])
 
-  const renderSwatchInner = (color: AlubondColor, showBarcodeHover: boolean) => {
+  const renderSwatchInner = (color: AlubondColor, showQrHover: boolean) => {
     const textureCycle = getFusionTextureCycle(color)
     const fusionMultiTextures = !!(textureCycle && textureCycle.length >= 2)
     const fusionDual =
@@ -101,8 +120,7 @@ export function FilmStripColorRail({
       (fusionMultiTextures || color.hexSecondary != null || color.panelTextureSecondary != null)
     const dualPanel = fusionMultiTextures || !!(color.panelTexture && color.panelTextureSecondary)
     const r = dock ? 7 : 10
-    const barcodeH = dock ? 14 : 20
-    const barcodeW = dock ? 0.45 : 0.65
+    const qrSize = dock ? 26 : 36
 
     return (
       <div
@@ -165,43 +183,31 @@ export function FilmStripColorRail({
           <div style={{ width: '100%', height: '100%', background: color.hex }} />
         ) : null}
         <div
-          role="button"
-          tabIndex={0}
-          title="Barcode — click for full details"
-          aria-label={`Barcode and details for ${color.name}`}
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            unlockFilmAudio()
-            setDetailColor(color)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              e.stopPropagation()
-              setDetailColor(color)
-            }
-          }}
+          aria-hidden
           style={{
             position: 'absolute',
-            right: 2,
-            bottom: 2,
-            maxWidth: dock ? 52 : 72,
-            padding: dock ? '1px 2px' : '2px 4px',
-            background: 'rgba(255,255,255,0.96)',
-            borderRadius: 4,
-            boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
-            cursor: 'pointer',
+            right: 3,
+            bottom: 3,
+            padding: 1,
+            width: qrSize + 2,
+            height: qrSize + 2,
+            background: 'rgba(255,255,255,0.94)',
+            borderRadius: 3,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
             lineHeight: 0,
             transition: 'opacity 0.12s ease, transform 0.12s ease',
-            opacity: showBarcodeHover ? 1 : 0,
-            pointerEvents: showBarcodeHover ? 'auto' : 'none',
-            transform: showBarcodeHover ? 'scale(1)' : 'scale(0.92)',
+            opacity: showQrHover ? 1 : 0,
+            pointerEvents: 'none',
+            transform: showQrHover ? 'scale(1)' : 'scale(0.92)',
             zIndex: 3,
             overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxSizing: 'border-box',
           }}
         >
-          <SkuBarcode value={color.sku} height={barcodeH} barWidth={barcodeW} displayValue={false} />
+          <SkuQrCode value={color.sku} size={qrSize} marginSize={0} />
         </div>
       </div>
     )
@@ -212,14 +218,20 @@ export function FilmStripColorRail({
         style={{
           borderRadius: dock ? 14 : 20,
           overflow: 'hidden',
-          border: `1px solid rgba(255,255,255,0.1)`,
-          boxShadow: dock
-            ? '0 4px 20px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)'
-            : '0 8px 28px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
-          background: 'linear-gradient(180deg, #2b2b2b 0%, #121212 40%, #1e1e1e 100%)',
+          border: `1px solid ${isLight ? t.border : 'rgba(255,255,255,0.1)'}`,
+          boxShadow: isLight
+            ? dock
+              ? '0 4px 18px rgba(27,45,91,0.12), inset 0 1px 0 rgba(255,255,255,0.9)'
+              : '0 8px 26px rgba(27,45,91,0.14), inset 0 1px 0 rgba(255,255,255,0.95)'
+            : dock
+              ? '0 4px 20px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)'
+              : '0 8px 28px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
+          background: isLight
+            ? 'linear-gradient(180deg, #f6f8fc 0%, #e8ecf4 42%, #eef1f7 100%)'
+            : 'linear-gradient(180deg, #2b2b2b 0%, #121212 40%, #1e1e1e 100%)',
         }}
       >
-        <SprocketRow compact={dock} />
+        <SprocketRow compact={dock} isLight={isLight} />
         <div
           ref={scrollRef}
           onScroll={handleScroll}
@@ -252,33 +264,42 @@ export function FilmStripColorRail({
             </div>
           ) : (
             colours.map((color) => {
-              const selected = isSameColor(selectedColor, color)
+              const selected = selectedColors.some((s) => s.sku === color.sku)
 
               return (
                 <button
                   key={color.sku}
                   type="button"
+                  title={`${color.sku} · ${color.name} — click to add/remove from selection · double-click for details & QR`}
                   onMouseEnter={() => setHoveredSku(color.sku)}
                   onMouseLeave={() => setHoveredSku(null)}
                   onFocus={() => setHoveredSku(color.sku)}
                   onBlur={() => setHoveredSku(null)}
-                  onClick={() => {
+                  onClick={(e) => {
                     unlockFilmAudio()
+                    if (e.detail === 2) {
+                      setDetailColor(color)
+                      return
+                    }
                     playFilmAdvanceTick()
-                    onSelectColor(selected ? null : color)
+                    onTogglePaletteColor(color)
                   }}
                   style={{
                     flex: '0 0 auto',
                     width: dock ? 64 : 92,
                     padding: dock ? 4 : 7,
                     borderRadius: dock ? 10 : 14,
-                    border: `2px solid ${selected ? brand.orange : 'rgba(255,255,255,0.12)'}`,
-                    background: 'linear-gradient(145deg, #3a3a3a 0%, #1f1f1f 100%)',
+                    border: `2px solid ${selected ? brand.orange : isLight ? t.buttonBorder : 'rgba(255,255,255,0.12)'}`,
+                    background: isLight
+                      ? 'linear-gradient(145deg, #ffffff 0%, #e4e9f2 100%)'
+                      : 'linear-gradient(145deg, #3a3a3a 0%, #1f1f1f 100%)',
                     cursor: 'pointer',
                     outline: 'none',
                     boxShadow: selected
-                      ? `0 0 0 1px rgba(232,119,34,0.4), 0 6px 18px rgba(232,119,34,0.2), inset 0 1px 0 rgba(255,255,255,0.08)`
-                      : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.35)',
+                      ? `0 0 0 1px rgba(232,119,34,0.4), 0 6px 18px rgba(232,119,34,0.2), inset 0 1px 0 ${isLight ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.08)'}`
+                      : isLight
+                        ? 'inset 0 1px 0 rgba(255,255,255,0.95), 0 3px 10px rgba(27,45,91,0.1)'
+                        : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.35)',
                     transition: 'border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease',
                     transform: selected ? 'translateY(-2px)' : 'none',
                   }}
@@ -295,7 +316,7 @@ export function FilmStripColorRail({
                       style={{
                         fontSize: dock ? 7 : 9,
                         fontWeight: 700,
-                        color: 'rgba(255,255,255,0.85)',
+                        color: isLight ? t.text : 'rgba(255,255,255,0.85)',
                         letterSpacing: '0.04em',
                         lineHeight: 1.15,
                         overflow: 'hidden',
@@ -336,12 +357,14 @@ export function FilmStripColorRail({
             })
           )}
         </div>
-        <SprocketRow compact={dock} />
+        <SprocketRow compact={dock} isLight={isLight} />
       </div>
   )
 
   const detailDialog =
-    detailColor ? <PaletteSkuDetailDialog color={detailColor} onClose={() => setDetailColor(null)} /> : null
+    detailColor ? (
+      <PaletteSkuDetailDialog color={detailColor} theme={theme} onClose={() => setDetailColor(null)} />
+    ) : null
 
   if (dock) {
     return (
@@ -383,7 +406,9 @@ export function FilmStripColorRail({
           flexShrink: 0,
           padding: '8px 10px 12px',
           borderTop: `1px solid ${t.border}`,
-          background: 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100%)',
+          background: isLight
+            ? 'linear-gradient(180deg, rgba(27,45,91,0.04) 0%, rgba(27,45,91,0.07) 100%)'
+            : 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100%)',
         }}
       >
         <div

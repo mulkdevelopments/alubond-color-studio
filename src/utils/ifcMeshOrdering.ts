@@ -66,9 +66,19 @@ export function orderMeshesForIfcFacade(meshes: IfcMeshMeta[]): PanelMaterialSlo
     return a.uuid.localeCompare(b.uuid)
   })
 
-  return enriched.map((m, index) => ({
-    uuid: m.uuid,
-    row: m.rowBand,
-    stripeIndex: index,
-  }))
+  let lastBand = -1
+  let colInBand = 0
+  return enriched.map((m, index) => {
+    if (m.rowBand !== lastBand) {
+      lastBand = m.rowBand
+      colInBand = 0
+    }
+    const col = colInBand++
+    return {
+      uuid: m.uuid,
+      row: m.rowBand,
+      col,
+      stripeIndex: index,
+    }
+  })
 }

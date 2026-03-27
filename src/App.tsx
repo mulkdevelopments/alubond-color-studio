@@ -15,27 +15,26 @@ import {
   type ImageStudioGenerateUiOptions,
 } from './components/ImageStudioGenerateDialog'
 import {
-  buildFacadePrompt,
-  buildFacadePromptMinimal,
+  buildFacadePromptMulti,
+  buildFacadePromptMinimalMulti,
   buildFacadeReferenceImageSuffix,
 } from './utils/imageFacadePrompt'
 import { captureWorkspacePreviewToDataUrl } from './utils/captureWorkspacePreview'
-import { colorUsesPanelTextureRefs } from './utils/paletteReferenceImages'
+import { anyColorUsesPanelTextureRefs } from './utils/paletteReferenceImages'
 import { downloadSnapshot, generateSpecPdf } from './utils/export'
 
 const IFCViewerLazy = lazy(() => import('./components/IFCViewer').then((m) => ({ default: m.IFCViewer })))
-import { getFusionTextureCycle, stripeFromMeshUuid } from './utils/fusionPanelCycle'
+import { stripeFromMeshUuid } from './utils/fusionPanelCycle'
 import { orderMeshesForIfcFacade, type IfcMeshMeta } from './utils/ifcMeshOrdering'
-import { materialOverridesForSlots, type PanelMaterialSlot } from './utils/panelMaterialBulkApply'
-import { materialPropsForFolder } from './services/fusionSuggestions'
+import {
+  materialOverridesForSlotsMulti,
+  materialStateForPanelSlot,
+  paletteColorIndexForSlot,
+  type PanelMaterialSlot,
+} from './utils/panelMaterialBulkApply'
 import { enhanceImageWithNanobanana, DEFAULT_PROMPT, type NanobananaGenerateOptions } from './utils/nanobananaEnhance'
-import { brand, workspace, type Theme } from './theme'
+import { brand, workspace, getStudioModalChrome, type Theme, type WorkspaceAppearance } from './theme'
 import type { MaterialState, AlubondColor, PaletteStyle } from './types'
-
-function isSameWorkspaceColor(a: AlubondColor | null, b: AlubondColor | null): boolean {
-  if (!a || !b) return a === b
-  return a.sku === b.sku
-}
 
 const ASPECT_RATIOS = ['1:1', '1:4', '1:8', '2:3', '3:2', '3:4', '4:1', '4:3', '4:5', '5:4', '8:1', '9:16', '16:9', '21:9', 'auto'] as const
 const RESOLUTIONS = ['1K', '2K', '4K'] as const
@@ -50,16 +49,7 @@ function GenerateOptionsDialog({
   onClose: () => void
   onGenerate: (options: NanobananaGenerateOptions, customPrompt: string) => void
 }) {
-  void theme
-  const panel = {
-    bg: '#000000',
-    border: 'rgba(255, 255, 255, 0.1)',
-    text: '#f0f0f0',
-    muted: 'rgba(255, 255, 255, 0.58)',
-    fieldBg: '#141414',
-    fieldBorder: 'rgba(255, 255, 255, 0.12)',
-    cancelBg: '#1a1a1a',
-  }
+  const panel = getStudioModalChrome(theme)
   const [aspectRatio, setAspectRatio] = useState<string>('16:9')
   const [resolution, setResolution] = useState<string>('1K')
   const [outputFormat, setOutputFormat] = useState<string>('png')
@@ -101,7 +91,7 @@ function GenerateOptionsDialog({
         position: 'fixed',
         inset: 0,
         zIndex: 1000,
-        background: 'rgba(0,0,0,0.55)',
+        background: panel.overlay,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -111,17 +101,17 @@ function GenerateOptionsDialog({
     >
       <div
         style={{
-          background: panel.bg,
+          background: panel.panelBg,
           borderRadius: 16,
-          border: `1px solid ${panel.border}`,
+          border: `1px solid ${panel.panelBorder}`,
           maxWidth: 440,
           width: '100%',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.55)',
+          boxShadow: panel.panelShadow,
           overflow: 'hidden',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${panel.border}` }}>
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${panel.panelBorder}` }}>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: panel.text }}>AI generate options</h3>
           <p style={{ margin: '8px 0 0', fontSize: 13, color: panel.muted }}>
             Adjust settings or use defaults. Custom prompt overrides the default.
@@ -177,7 +167,7 @@ function GenerateOptionsDialog({
         <div
           style={{
             padding: '16px 24px',
-            borderTop: `1px solid ${panel.border}`,
+            borderTop: `1px solid ${panel.panelBorder}`,
             display: 'flex',
             justifyContent: 'flex-end',
             gap: 10,
@@ -234,29 +224,32 @@ const DEFAULT_FACADE_SETTINGS: FacadeSettings = {
   style: 'landscape',
   typology: 'square',
   typologyParam: 3,
-  transform: 'flat',
+  paletteLayout: 'linear',
   tiltAngle: 15,
+  leftEndThickness: 0,
+  rightEndThickness: 0,
+  bottomEndThickness: 0,
+  topEndThickness: 0,
 }
 
 export type PaintAction = { uuid: string; prev: MaterialState | null; next: MaterialState }
 
-function hexToNumber(hex: string): number {
-  return parseInt(hex.replace('#', ''), 16)
-}
-
 export default function App() {
   const [appMode, setAppMode] = useState<AppMode>('landing')
-  const [selectedColor, setSelectedColor] = useState<AlubondColor | null>(null)
+  const [selectedColors, setSelectedColors] = useState<AlubondColor[]>([])
   const [compareMode, setCompareMode] = useState<'single' | 'split'>('single')
   const [libraryTab, setLibraryTab] = useState<PaletteStyle>('Modern')
   const [generatedRenders, setGeneratedRenders] = useState<GeneratedRender[]>([])
   const [isGeneratingRender, setIsGeneratingRender] = useState(false)
   const [aiEnabled, setAiEnabled] = useState(false)
-  const [, setTheme] = useState<Theme>('light')
+  const [workspaceAppearance, setWorkspaceAppearance] = useState<WorkspaceAppearance>('dark')
   const [facadeSettings, setFacadeSettings] = useState<FacadeSettings>(DEFAULT_FACADE_SETTINGS)
-  const facadePanelsRef = useRef<{ uuid: string; row: number; stripeIndex: number }[]>([])
-  const selectedColorRef = useRef<AlubondColor | null>(null)
-  selectedColorRef.current = selectedColor
+  const facadePanelsRef = useRef<PanelMaterialSlot[]>([])
+  const selectedColorsRef = useRef<AlubondColor[]>([])
+  selectedColorsRef.current = selectedColors
+
+  const primaryColor = selectedColors[0] ?? null
+
   const selectionToolEnabled = false
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
   const [showImageGenerateDialog, setShowImageGenerateDialog] = useState(false)
@@ -285,6 +278,28 @@ export default function App() {
   const [ifcMeshCount, setIfcMeshCount] = useState(0)
   const ifcOrderedPanelsRef = useRef<PanelMaterialSlot[]>([])
 
+  const togglePaletteColor = useCallback(
+    (c: AlubondColor) => {
+      setSelectedColors((prev) => {
+        if (appMode === 'ifc' && ifcSelectionTool) {
+          const i = prev.findIndex((x) => x.sku === c.sku)
+          if (i >= 0) return []
+          return [c]
+        }
+        const j = prev.findIndex((x) => x.sku === c.sku)
+        if (j >= 0) return prev.filter((_, k) => k !== j)
+        return [...prev, c]
+      })
+    },
+    [appMode, ifcSelectionTool]
+  )
+
+  /** IFC click-to-paint: one library finish at a time. Trim when turning selection on. */
+  useEffect(() => {
+    if (appMode !== 'ifc' || !ifcSelectionTool) return
+    setSelectedColors((prev) => (prev.length > 1 ? [prev[0]] : prev))
+  }, [appMode, ifcSelectionTool])
+
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
   const [resultImage, setResultImage] = useState<string | null>(null)
   const [imageProcessing, setImageProcessing] = useState(false)
@@ -304,7 +319,12 @@ export default function App() {
     const canvas = canvasRef.current
     if (!canvas) return
     setIsGeneratingRender(true)
-    const colorLabel = selectedColor ? `${selectedColor.name} (${selectedColor.sku})` : undefined
+    const colorLabel =
+      selectedColors.length === 0
+        ? undefined
+        : selectedColors.length === 1
+          ? `${selectedColors[0].name} (${selectedColors[0].sku})`
+          : selectedColors.map((c) => c.sku).join(', ')
     try {
       const dataUrl = await new Promise<string>((resolve) => {
         requestAnimationFrame(() => {
@@ -327,7 +347,7 @@ export default function App() {
     } finally {
       setIsGeneratingRender(false)
     }
-  }, [appMode, selectedColor, aiEnabled])
+  }, [appMode, selectedColors, aiEnabled])
 
   const handleConfirmAiGenerate = useCallback(
     async (options: NanobananaGenerateOptions, customPrompt: string) => {
@@ -335,7 +355,12 @@ export default function App() {
       const canvas = canvasRef.current
       if (!canvas) return
       setIsGeneratingRender(true)
-      const colorLabel = selectedColor ? `${selectedColor.name} (${selectedColor.sku})` : undefined
+      const colorLabel =
+      selectedColors.length === 0
+        ? undefined
+        : selectedColors.length === 1
+          ? `${selectedColors[0].name} (${selectedColors[0].sku})`
+          : selectedColors.map((c) => c.sku).join(', ')
       try {
         const dataUrl = await new Promise<string>((resolve) => {
           requestAnimationFrame(() => {
@@ -361,7 +386,7 @@ export default function App() {
         setIsGeneratingRender(false)
       }
     },
-    [selectedColor, aiEnabled]
+    [selectedColors, aiEnabled]
   )
 
   const handleDeleteRender = useCallback((id: string) => {
@@ -382,18 +407,27 @@ export default function App() {
 
   const handleExportPdf = useCallback(() => {
     if (appMode !== 'studio') return
-    const colors = selectedColor
-      ? [{ name: selectedColor.name, sku: selectedColor.sku, hex: selectedColor.hex, finish: getFinishLabel(selectedColor) }]
-      : []
+    const colors = selectedColors.map((c) => ({
+      name: c.name,
+      sku: c.sku,
+      hex: c.hex,
+      finish: getFinishLabel(c),
+    }))
     const snapshotDataUrl = canvasRef.current?.toDataURL('image/png')
-    generateSpecPdf(
-      selectedColor?.name ?? 'Alubond facade',
-      selectedColor?.collection ?? '—',
-      colors,
-      colorOverrides.size,
-      snapshotDataUrl
-    )
-  }, [appMode, selectedColor, colorOverrides.size])
+    const titleName =
+      selectedColors.length === 0
+        ? 'Alubond facade'
+        : selectedColors.length === 1
+          ? selectedColors[0].name
+          : `${selectedColors.length} finishes`
+    const collectionLine =
+      selectedColors.length === 0
+        ? '—'
+        : selectedColors.length === 1
+          ? selectedColors[0].collection
+          : selectedColors.map((c) => c.collection).filter((v, i, a) => a.indexOf(v) === i).join(' · ')
+    generateSpecPdf(titleName, collectionLine, colors, colorOverrides.size, snapshotDataUrl)
+  }, [appMode, selectedColors, colorOverrides.size])
 
   const appliedMaterials = useMemo(() => new Map(colorOverrides), [colorOverrides])
   const ifcAppliedMaterials = useMemo(() => new Map(ifcPaintState.colorOverrides), [ifcPaintState.colorOverrides])
@@ -404,35 +438,14 @@ export default function App() {
 
   const handleApplyColor = useCallback(
     (uuid: string, currentState: MaterialState) => {
-      if (!selectedColor) return
-      const cycle = getFusionTextureCycle(selectedColor)
-      if (cycle && cycle.length >= 2) {
-        const panel = facadePanelsRef.current.find((p) => p.uuid === uuid)
-        const stripe = panel?.stripeIndex ?? panel?.row ?? 0
-        const ref = cycle[stripe % cycle.length]
-        const mp = materialPropsForFolder(ref.folder)
-        const next: MaterialState = {
-          color: hexToNumber(selectedColor.hex),
-          metalness: mp.metalness,
-          roughness: mp.roughness,
-          finish: selectedColor.finish,
-          panelTexture: ref,
-        }
-        const action: PaintAction = { uuid, prev: currentState, next }
-        setFacadePaintState((prev) => ({
-          colorOverrides: new Map(prev.colorOverrides).set(uuid, next),
-          undoStack: [...prev.undoStack, action],
-          redoStack: [],
-        }))
-        return
-      }
-      const next: MaterialState = {
-        color: hexToNumber(selectedColor.hex),
-        metalness: selectedColor.metalness ?? 0,
-        roughness: selectedColor.roughness ?? 0.7,
-        finish: selectedColor.finish,
-        ...(selectedColor.panelTexture ? { panelTexture: selectedColor.panelTexture } : {}),
-      }
+      if (selectedColors.length === 0) return
+      const panel = facadePanelsRef.current.find((p) => p.uuid === uuid)
+      const slot: PanelMaterialSlot = panel ?? { uuid, row: 0, col: 0, stripeIndex: 0 }
+      const colors = selectedColors
+      const layout = facadeSettings.paletteLayout
+      const c =
+        colors.length === 1 ? colors[0] : colors[paletteColorIndexForSlot(slot, layout, colors.length)]
+      const next = materialStateForPanelSlot(slot, c)
       const action: PaintAction = { uuid, prev: currentState, next }
       setFacadePaintState((prev) => ({
         colorOverrides: new Map(prev.colorOverrides).set(uuid, next),
@@ -440,38 +453,42 @@ export default function App() {
         redoStack: [],
       }))
     },
-    [selectedColor]
+    [selectedColors, facadeSettings.paletteLayout]
   )
 
-  const applyColorToPanels = useCallback((panels: PanelMaterialSlot[], color: AlubondColor) => {
-    const bulk = materialOverridesForSlots(panels, color)
-    setFacadePaintState((prev) => {
-      const overrides = new Map(prev.colorOverrides)
-      for (const [uuid, state] of bulk) overrides.set(uuid, state)
-      return { colorOverrides: overrides, undoStack: prev.undoStack, redoStack: [] }
-    })
-  }, [])
+  const applyColorsToPanels = useCallback(
+    (panels: PanelMaterialSlot[], colors: AlubondColor[], layout: FacadeSettings['paletteLayout']) => {
+      if (colors.length === 0) return
+      const bulk = materialOverridesForSlotsMulti(panels, colors, layout)
+      setFacadePaintState((prev) => {
+        const overrides = new Map(prev.colorOverrides)
+        for (const [uuid, state] of bulk) overrides.set(uuid, state)
+        return { colorOverrides: overrides, undoStack: prev.undoStack, redoStack: [] }
+      })
+    },
+    []
+  )
 
   const handleApplyAllPanels = useCallback(() => {
-    if (!selectedColor) return
-    applyColorToPanels(facadePanelsRef.current, selectedColor)
-  }, [selectedColor, applyColorToPanels])
+    if (selectedColors.length === 0) return
+    applyColorsToPanels(facadePanelsRef.current, selectedColors, facadeSettings.paletteLayout)
+  }, [selectedColors, applyColorsToPanels, facadeSettings.paletteLayout])
 
   /** Stable callback so FacadeBuilding’s panel effect doesn’t re-run on every colour change (avoids races with texture apply). */
   const handlePanelsReady = useCallback(
-    (panels: { uuid: string; row: number; stripeIndex: number }[]) => {
+    (panels: PanelMaterialSlot[]) => {
       facadePanelsRef.current = panels
-      const c = selectedColorRef.current
-      if (c) applyColorToPanels(panels, c)
+      const cols = selectedColorsRef.current
+      if (cols.length > 0) applyColorsToPanels(panels, cols, facadeSettings.paletteLayout)
     },
-    [applyColorToPanels]
+    [applyColorsToPanels, facadeSettings.paletteLayout]
   )
 
-  // When user picks a colour in Facade Maker, apply to all panels
+  // When user updates palette selection or layout in Facade Maker, apply to all panels
   useEffect(() => {
-    if (appMode !== 'studio' || !selectedColor) return
+    if (appMode !== 'studio' || selectedColors.length === 0) return
     handleApplyAllPanels()
-  }, [appMode, selectedColor, handleApplyAllPanels])
+  }, [appMode, selectedColors, handleApplyAllPanels, facadeSettings.paletteLayout])
 
   useEffect(() => {
     return () => {
@@ -501,68 +518,40 @@ export default function App() {
   }, [])
 
   const handleIfcApplyAll = useCallback(() => {
-    if (!selectedColor) return
+    if (selectedColors.length === 0) return
     const panels = ifcOrderedPanelsRef.current
     if (panels.length === 0) return
-    const bulk = materialOverridesForSlots(panels, selectedColor)
+    const bulk = materialOverridesForSlotsMulti(panels, selectedColors, facadeSettings.paletteLayout)
     setIfcPaintState((prev) => {
       const overrides = new Map(prev.colorOverrides)
       for (const [uuid, state] of bulk) overrides.set(uuid, state)
       return { colorOverrides: overrides, undoStack: prev.undoStack, redoStack: [] }
     })
-  }, [selectedColor])
+  }, [selectedColors, facadeSettings.paletteLayout])
+
+  // Re-map whole IFC when palette layout or film-strip swatches change — but not in surface/click mode,
+  // where each click should only touch one mesh (apply-all is explicit via the left panel button).
+  useEffect(() => {
+    if (appMode !== 'ifc' || selectedColors.length === 0) return
+    if (ifcSelectionTool) return
+    handleIfcApplyAll()
+  }, [appMode, selectedColors, facadeSettings.paletteLayout, handleIfcApplyAll, ifcSelectionTool])
 
   const handleIfcApplyColor = useCallback(
     (uuid: string, currentState: MaterialState) => {
-      if (!selectedColor) return
-      const slot = ifcOrderedPanelsRef.current.find((p) => p.uuid === uuid)
-      const cycle = getFusionTextureCycle(selectedColor)
-      if (cycle && cycle.length >= 2) {
-        const stripeIndex = slot
-          ? slot.stripeIndex
-          : stripeFromMeshUuid(uuid, cycle.length)
-        const ref = cycle[stripeIndex % cycle.length]
-        const mp = materialPropsForFolder(ref.folder)
-        const next: MaterialState = {
-          color: hexToNumber(selectedColor.hex),
-          metalness: mp.metalness,
-          roughness: mp.roughness,
-          finish: selectedColor.finish,
-          panelTexture: ref,
+      if (selectedColors.length === 0) return
+      const slot =
+        ifcOrderedPanelsRef.current.find((p) => p.uuid === uuid) ?? {
+          uuid,
+          row: 0,
+          col: 0,
+          stripeIndex: stripeFromMeshUuid(uuid, Math.max(8, selectedColors.length * 3)),
         }
-        const action: PaintAction = { uuid, prev: currentState, next }
-        setIfcPaintState((prev) => ({
-          colorOverrides: new Map(prev.colorOverrides).set(uuid, next),
-          undoStack: [...prev.undoStack, action],
-          redoStack: [],
-        }))
-        return
-      }
-      const isFusionTwo =
-        selectedColor.finish === 'fusion' &&
-        (selectedColor.hexSecondary != null || selectedColor.panelTextureSecondary != null)
-      const stateA: MaterialState = {
-        color: hexToNumber(selectedColor.hex),
-        metalness: selectedColor.metalness ?? 0,
-        roughness: selectedColor.roughness ?? 0.7,
-        finish: selectedColor.finish,
-        ...(selectedColor.panelTexture ? { panelTexture: selectedColor.panelTexture } : {}),
-      }
-      const stateB: MaterialState = isFusionTwo
-        ? {
-            color: hexToNumber(selectedColor.hexSecondary ?? selectedColor.hex),
-            metalness: selectedColor.metalnessSecondary ?? selectedColor.metalness ?? 0,
-            roughness: selectedColor.roughnessSecondary ?? selectedColor.roughness ?? 0.7,
-            finish: selectedColor.finish,
-            ...(selectedColor.panelTextureSecondary
-              ? { panelTexture: selectedColor.panelTextureSecondary }
-              : {}),
-          }
-        : stateA
-      const useB =
-        isFusionTwo &&
-        (slot ? slot.row % 2 === 1 : stripeFromMeshUuid(uuid, 2) === 1)
-      const next = useB ? stateB : stateA
+      const colors = selectedColors
+      const layout = facadeSettings.paletteLayout
+      const c =
+        colors.length === 1 ? colors[0] : colors[paletteColorIndexForSlot(slot, layout, colors.length)]
+      const next = materialStateForPanelSlot(slot, c)
       const action: PaintAction = { uuid, prev: currentState, next }
       setIfcPaintState((prev) => ({
         colorOverrides: new Map(prev.colorOverrides).set(uuid, next),
@@ -570,7 +559,7 @@ export default function App() {
         redoStack: [],
       }))
     },
-    [selectedColor]
+    [selectedColors, facadeSettings.paletteLayout]
   )
 
   const handleImageFile = useCallback((file: File) => {
@@ -587,13 +576,13 @@ export default function App() {
   }, [])
 
   const handleOpenImageStudioGenerate = useCallback(() => {
-    if (!uploadedImage || !selectedColor) return
+    if (!uploadedImage || selectedColors.length === 0) return
     setShowImageGenerateDialog(true)
-  }, [uploadedImage, selectedColor])
+  }, [uploadedImage, selectedColors.length])
 
   const handleConfirmImageStudioGenerate = useCallback(
     async (ui: ImageStudioGenerateUiOptions) => {
-      if (!uploadedImage || !selectedColor) return
+      if (!uploadedImage || selectedColors.length === 0) return
 
       let imageForApi: string
       try {
@@ -614,13 +603,13 @@ export default function App() {
       setImageProcessing(true)
       setImageError(null)
       try {
-        const hasTextureRefs = colorUsesPanelTextureRefs(selectedColor)
+        const hasTextureRefs = anyColorUsesPanelTextureRefs(selectedColors)
         const refSuffix = buildFacadeReferenceImageSuffix(hasTextureRefs)
-        let prompt = buildFacadePrompt(selectedColor) + refSuffix
+        let prompt = buildFacadePromptMulti(selectedColors) + refSuffix
         if (ui.customPrompt.trim()) {
           prompt += ` Additional creative direction: ${ui.customPrompt.trim()}`
         }
-        /** One composite image only — no multi-image imageUrls. */
+        /** References are already embedded in the workspace JPEG capture (photo + ref strip). */
         const nanoOpts: NanobananaGenerateOptions = {
           aspectRatio: ui.aspectRatio,
           resolution: ui.resolution,
@@ -642,7 +631,7 @@ export default function App() {
               msg
             )
           ) {
-            setResultImage(await run(buildFacadePromptMinimal(selectedColor) + refSuffix + extra))
+            setResultImage(await run(buildFacadePromptMinimalMulti(selectedColors) + refSuffix + extra))
           } else {
             throw e
           }
@@ -653,7 +642,7 @@ export default function App() {
         setImageProcessing(false)
       }
     },
-    [uploadedImage, selectedColor]
+    [uploadedImage, selectedColors]
   )
 
   const handleDownloadImageResult = useCallback(async () => {
@@ -750,7 +739,7 @@ export default function App() {
     return <LandingPage onSelectMode={setAppMode} />
   }
 
-  const workspaceTheme: Theme = 'workspace'
+  const workspaceTheme: Theme = workspaceAppearance === 'light' ? 'light' : 'dark'
   const isStudio = appMode === 'studio'
   const isIfc = appMode === 'ifc'
   const isImage = appMode === 'image'
@@ -779,16 +768,17 @@ export default function App() {
         selectionToolEnabled={ifcSelectionTool}
         onToggleSelection={() => setIfcSelectionTool((v) => !v)}
         meshCount={ifcMeshCount}
-        selectedColor={selectedColor}
+        selectedColors={selectedColors}
         onApplyAllSurfaces={handleIfcApplyAll}
       />
     ) : isImage ? (
       <ImageLeftColumn
         theme={workspaceTheme}
         uploadedImage={uploadedImage}
-        canGenerate={!!uploadedImage && !!selectedColor}
+        canGenerate={!!uploadedImage && selectedColors.length > 0}
         hasResult={!!resultImage}
-        selectedColor={selectedColor}
+        selectedColor={primaryColor}
+        selectedCount={selectedColors.length}
         isProcessing={imageProcessing}
         error={imageError}
         dragActive={imageDragActive}
@@ -807,7 +797,8 @@ export default function App() {
       activeStudioModeId={appMode}
       onStudioModeChange={handleStudioHeaderMode}
       onBack={() => setAppMode('landing')}
-      onThemeToggle={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+      workspaceAppearance={workspaceAppearance}
+      onThemeToggle={() => setWorkspaceAppearance((p) => (p === 'light' ? 'dark' : 'light'))}
       leftPanel={leftColumn}
       facadePanel={
         isStudio ? (
@@ -815,7 +806,7 @@ export default function App() {
             theme={workspaceTheme}
             settings={facadeSettings}
             onChange={setFacadeSettings}
-            selectedColor={selectedColor}
+            selectedColors={selectedColors}
             onApplyAll={handleApplyAllPanels}
             layout="vertical"
           />
@@ -828,6 +819,7 @@ export default function App() {
       rightPanel={
         <RendersPanel
           theme={workspaceTheme}
+          workspaceAppearance={workspaceAppearance}
           renders={generatedRenders}
           onGenerate={handleGenerateRender}
           onDelete={handleDeleteRender}
@@ -849,12 +841,12 @@ export default function App() {
       bottomFilmDock={
         <LibraryFilmBottomDock
           theme={workspaceTheme}
+          workspaceAppearance={workspaceAppearance}
           libraryTab={libraryTab}
           onLibraryTabChange={setLibraryTab}
           colours={workspaceFilmColours}
-          selectedColor={selectedColor}
-          onSelectColor={setSelectedColor}
-          isSameColor={isSameWorkspaceColor}
+          selectedColors={selectedColors}
+          onTogglePaletteColor={togglePaletteColor}
         />
       }
     >
@@ -929,7 +921,7 @@ export default function App() {
             uploadedImage={uploadedImage}
             resultImage={resultImage}
             isProcessing={imageProcessing}
-            selectedColor={selectedColor}
+            selectedColors={selectedColors}
             previewCaptureRef={imageStudioPreviewRef}
           />
         )}
@@ -942,11 +934,11 @@ export default function App() {
         onGenerate={handleConfirmAiGenerate}
       />
     )}
-    {showImageGenerateDialog && uploadedImage && selectedColor && (
+    {showImageGenerateDialog && uploadedImage && selectedColors.length > 0 && (
       <ImageStudioGenerateDialog
         theme={workspaceTheme}
         uploadedImage={uploadedImage}
-        selectedColor={selectedColor}
+        selectedColors={selectedColors}
         onClose={() => setShowImageGenerateDialog(false)}
         onConfirm={handleConfirmImageStudioGenerate}
       />

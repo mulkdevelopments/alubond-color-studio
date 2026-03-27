@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { AlubondColor, PanelTextureRef } from '../types'
 import type { Theme } from '../theme'
-import { getThemeTokens, brand, glassChrome } from '../theme'
+import { getThemeTokens, brand } from '../theme'
 import {
   generateFusionSuggestions,
   type FusionSuggestion,
@@ -55,15 +55,13 @@ function FusionPanelStrip({
 
 export function FusionAiPanel({
   theme,
-  selectedColor,
-  onSelectColor,
-  isSameColor,
+  selectedColors,
+  onTogglePaletteColor,
   variant = 'panel',
 }: {
   theme: Theme
-  selectedColor: AlubondColor | null
-  onSelectColor: (color: AlubondColor | null) => void
-  isSameColor: (a: AlubondColor | null, b: AlubondColor | null) => boolean
+  selectedColors: AlubondColor[]
+  onTogglePaletteColor: (color: AlubondColor) => void
   /** `dock` = bottom film bar (glass borders); `panel` = sidebar card */
   variant?: 'panel' | 'dock'
 }) {
@@ -132,14 +130,17 @@ export function FusionAiPanel({
     }
   }, [])
 
-  const borderColor = dock ? glassChrome.border : t.border
-  const cardBg = dock ? glassChrome.iconBg : t.cardBg
+  const borderColor = t.border
+  const cardBg = dock ? t.buttonBg : t.cardBg
+  const fusionApiConfigured =
+    typeof import.meta.env.VITE_OPENAI_API_KEY === 'string' &&
+    import.meta.env.VITE_OPENAI_API_KEY.trim().length > 0
 
   return (
     <div
       style={{
         padding: dock ? '0 0 10px' : '12px 16px',
-        borderBottom: dock ? `1px solid ${glassChrome.borderSoft}` : `1px solid ${t.border}`,
+        borderBottom: `1px solid ${t.border}`,
         marginBottom: dock ? 4 : undefined,
       }}
     >
@@ -175,7 +176,7 @@ export function FusionAiPanel({
             margin: 0,
             fontSize: 10,
             fontWeight: 600,
-            color: dock ? glassChrome.textMuted : t.textMuted,
+            color: t.textMuted,
             textTransform: 'uppercase',
             letterSpacing: '0.06em',
           }}
@@ -232,26 +233,52 @@ export function FusionAiPanel({
           margin: '0 0 8px',
           fontSize: 10,
           fontWeight: 600,
-          color: dock ? glassChrome.textMuted : t.textMuted,
+          color: t.textMuted,
           textTransform: 'uppercase',
           letterSpacing: '0.06em',
         }}
       >
         Generate a fusion
       </h4>
+      {!fusionApiConfigured && (
+        <p
+          style={{
+            margin: '0 0 8px',
+            fontSize: 10,
+            lineHeight: 1.45,
+            color: t.textMuted,
+          }}
+        >
+          Set <code style={{ fontSize: 9 }}>VITE_OPENAI_API_KEY</code> in <code style={{ fontSize: 9 }}>.env</code> to
+          enable AI suggestions. Ready-made fusion swatches still apply from the Fusion strip below.
+        </p>
+      )}
       <button
         type="button"
         onClick={handleGenerateFusionSuggestions}
-        disabled={fusionLoading || fusionParticipants.length === 0}
+        disabled={fusionLoading || fusionParticipants.length === 0 || !fusionApiConfigured}
+        title={
+          !fusionApiConfigured
+            ? 'Add VITE_OPENAI_API_KEY to .env'
+            : fusionParticipants.length === 0
+              ? 'Select at least one category'
+              : undefined
+        }
         style={{
           padding: '6px 12px',
           fontSize: 11,
           fontWeight: 600,
-          background: fusionLoading || fusionParticipants.length === 0 ? borderColor : brand.orange,
+          background:
+            fusionLoading || fusionParticipants.length === 0 || !fusionApiConfigured ? borderColor : brand.orange,
           color: '#fff',
           border: 'none',
           borderRadius: 8,
-          cursor: fusionLoading ? 'wait' : fusionParticipants.length === 0 ? 'not-allowed' : 'pointer',
+          cursor:
+            fusionLoading
+              ? 'wait'
+              : fusionParticipants.length === 0 || !fusionApiConfigured
+                ? 'not-allowed'
+                : 'pointer',
           transition: 'all 0.15s ease',
         }}
       >
@@ -262,12 +289,12 @@ export function FusionAiPanel({
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {fusionSuggestions.map((s, i) => {
             const asColor = suggestionToColor(s)
-            const selected = isSameColor(selectedColor, asColor)
+            const selected = selectedColors.some((x) => x.sku === asColor.sku)
             return (
               <button
                 key={`${s.name}-${i}`}
                 type="button"
-                onClick={() => onSelectColor(selected ? null : asColor)}
+                onClick={() => onTogglePaletteColor(asColor)}
                 style={{
                   padding: 10,
                   textAlign: 'left',

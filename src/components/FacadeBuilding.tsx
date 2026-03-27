@@ -4,8 +4,8 @@ import * as THREE from 'three'
 import type { Group, Mesh, MeshStandardMaterial } from 'three'
 import type { MaterialState } from '../types'
 import { getPanelTextureUrl } from '../utils/panelTextureUrl'
+import type { PaletteLayout } from '../utils/panelMaterialBulkApply'
 
-export type PanelTransform = 'flat' | 'alternate' | 'wave' | 'fold' | 'diagonal'
 export type PanelStyle = 'landscape' | 'portrait' | 'square'
 
 /** Style & Typology pattern: geometric panel pattern / subdivision type (aligned with competitor) */
@@ -40,8 +40,18 @@ export interface FacadeSettings {
   typology: TypologyType
   /** Numeric parameter for typology (e.g. grid cell index or divisions), 1–9 */
   typologyParam: number
-  transform: PanelTransform
+  /** How multiple selected library palettes map across the façade (and IFC surfaces). */
+  paletteLayout: PaletteLayout
+  /** 0–45: scales panel extrusion depth (field name kept for persisted settings). */
   tiltAngle: number
+  /** 0–45: per-panel depth multiplier up to 4× at the left edge (vs right); combines with other edge tapers. */
+  leftEndThickness: number
+  /** 0–45: up to 4× at the right edge (vs left). */
+  rightEndThickness: number
+  /** 0–45: up to 4× at the bottom edge (y−; vs top). */
+  bottomEndThickness: number
+  /** 0–45: up to 4× at the top edge (y+; vs bottom). */
+  topEndThickness: number
 }
 
 interface FacadeBuildingProps {
@@ -50,10 +60,9 @@ interface FacadeBuildingProps {
   onApplyColor: (uuid: string, currentState: MaterialState) => void
   appliedMaterials?: Map<string, MaterialState>
   /**
-   * Called for each paintable panel mesh. `stripeIndex` is 0..n-1 in facade order (used for N-way fusion cycling).
-   * `row` is the facade grid row (only 0..rows-1), so using row alone cannot express 3+ palette cycles when rows < 3.
+   * Called for each paintable panel mesh. `stripeIndex` is read order; `row` / `col` are grid indices for band layouts.
    */
-  onPanelsReady?: (panels: { uuid: string; row: number; stripeIndex: number }[]) => void
+  onPanelsReady?: (panels: { uuid: string; row: number; col: number; stripeIndex: number }[]) => void
 }
 
 function getMaterialState(mat: MeshStandardMaterial): MaterialState {
@@ -76,27 +85,15 @@ const WALL_COLOR = 0x2a2a2a
 const DEFAULT_PANEL_COLOR = 0xc0c8d0
 const GROUND_COLOR = 0xd8d8d8
 
-function getPanelRotation(
-  col: number, row: number, cols: number, rows: number,
-  transform: PanelTransform, tiltAngle: number
-): [number, number, number] {
-  const a = tiltAngle * (Math.PI / 180)
-  switch (transform) {
-    case 'flat':
-      return [0, 0, 0]
-    case 'alternate':
-      return [0, ((col + row) % 2 === 0 ? a : -a), 0]
-    case 'wave':
-      return [0, Math.sin((col / cols) * Math.PI * 2) * a, 0]
-    case 'fold':
-      return [((row % 2 === 0 ? 1 : -1) * a * 0.5), ((col % 2 === 0 ? 1 : -1) * a), 0]
-    case 'diagonal': {
-      const diag = (col + row) / (cols + rows)
-      return [0, Math.sin(diag * Math.PI * 4) * a, 0]
-    }
-    default:
-      return [0, 0, 0]
-  }
+/** Slider `tiltAngle` (0–45) maps to extrusion depth, not rotation. */
+const THICKNESS_SLIDER_MAX = 45
+/** At slider max, panel depth is this multiple of `PANEL_DEPTH`. */
+const THICKNESS_DEPTH_MAX_MULT = 3
+
+/** Extrusion depth from façade “thickness” slider (same for every panel). */
+function panelDepthFromThicknessSlider(tiltAngleDeg: number): number {
+  const t = Math.max(0, Math.min(THICKNESS_SLIDER_MAX, tiltAngleDeg)) / THICKNESS_SLIDER_MAX
+  return PANEL_DEPTH * (1 + t * (THICKNESS_DEPTH_MAX_MULT - 1))
 }
 
 function makePanelMaterial(): MeshStandardMaterial {
@@ -196,6 +193,90 @@ function createLinearTaperDepthGeometry(w: number, h: number, dTop: number, dBot
   geo.setIndex(indices)
   geo.computeVertexNormals()
   return geo
+}
+
+/** Max depth multiplier at an edge vs nominal (same as `doubleDepthBottom` 1:4). */
+const TAPER_DEPTH_MAX_RATIO = 4
+
+function taperEdgeMultiplier(deg: number): number {
+  if (deg <= 0) return 1
+  const t = Math.max(0, Math.min(THICKNESS_SLIDER_MAX, deg)) / THICKNESS_SLIDER_MAX
+  return 1 + t * (TAPER_DEPTH_MAX_RATIO - 1)
+}
+
+/**
+ * Flat back plane; front depth = d × mLeft(x) × mBottom(y) with mX linear left→right, mY linear bottom→top.
+ * Matches pure left-only / bottom-only tapers when other multipliers are 1.
+ */
+function createBilinearTaperPanelGeometry(
+  w: number,
+  h: number,
+  d: number,
+  leftM: number,
+  rightM: number,
+  bottomM: number,
+  topM: number
+): THREE.BufferGeometry {
+  const hw = w / 2
+  const hh = h / 2
+  const pTL = leftM * topM
+  const pTR = rightM * topM
+  const pBL = leftM * bottomM
+  const pBR = rightM * bottomM
+  const minP = Math.min(pTL, pTR, pBL, pBR)
+  const zBack = (-d * minP) / 2
+  const zFTL = zBack + d * pTL
+  const zFTR = zBack + d * pTR
+  const zFBL = zBack + d * pBL
+  const zFBR = zBack + d * pBR
+  const positions = new Float32Array([
+    -hw, hh, zBack,
+    hw, hh, zBack,
+    hw, hh, zFTR,
+    -hw, hh, zFTL,
+    -hw, -hh, zBack,
+    hw, -hh, zBack,
+    hw, -hh, zFBR,
+    -hw, -hh, zFBL,
+  ])
+  const indices = [
+    0, 1, 2, 0, 2, 3,
+    4, 6, 5, 4, 7, 6,
+    0, 4, 5, 0, 5, 1,
+    3, 2, 6, 3, 6, 7,
+    0, 3, 7, 0, 7, 4,
+    1, 5, 6, 1, 6, 2,
+  ]
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setIndex(indices)
+  geo.computeVertexNormals()
+  return geo
+}
+
+function createPanelBoxMesh(
+  w: number,
+  h: number,
+  dNominal: number,
+  leftEndDeg: number,
+  rightEndDeg: number,
+  bottomEndDeg: number,
+  topEndDeg: number
+): THREE.Mesh {
+  const leftM = taperEdgeMultiplier(leftEndDeg)
+  const rightM = taperEdgeMultiplier(rightEndDeg)
+  const bottomM = taperEdgeMultiplier(bottomEndDeg)
+  const topM = taperEdgeMultiplier(topEndDeg)
+  if (
+    Math.abs(leftM - 1) < 1e-6 &&
+    Math.abs(rightM - 1) < 1e-6 &&
+    Math.abs(bottomM - 1) < 1e-6 &&
+    Math.abs(topM - 1) < 1e-6
+  ) {
+    return new THREE.Mesh(new THREE.BoxGeometry(w, h, dNominal), makePanelMaterial())
+  }
+  const geo = createBilinearTaperPanelGeometry(w, h, dNominal, leftM, rightM, bottomM, topM)
+  return new THREE.Mesh(geo, makePanelMaterial())
 }
 
 /**
@@ -316,15 +397,25 @@ function createCellMeshes(
   typology: TypologyType,
   _typologyParam: number,
   w: number,
-  h: number
+  h: number,
+  panelDepth: number,
+  leftEndThickness: number,
+  rightEndThickness: number,
+  bottomEndThickness: number,
+  topEndThickness: number
 ): { mesh: THREE.Mesh; offsetX: number; offsetY: number; rotationZ?: number; offsetZ?: number }[] {
-  const d = PANEL_DEPTH
+  const d = panelDepth
+  const skipEdgeTaper =
+    typology === 'doubleDepthBottom' || typology === 'centerDepth4x' || typology === 'thickBottomLip'
+  const tL = skipEdgeTaper ? 0 : leftEndThickness
+  const tR = skipEdgeTaper ? 0 : rightEndThickness
+  const tB = skipEdgeTaper ? 0 : bottomEndThickness
+  const tT = skipEdgeTaper ? 0 : topEndThickness
   const out: { mesh: THREE.Mesh; offsetX: number; offsetY: number; rotationZ?: number; offsetZ?: number }[] = []
 
   switch (typology) {
     case 'square': {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), makePanelMaterial())
-      out.push({ mesh, offsetX: 0, offsetY: 0 })
+      out.push({ mesh: createPanelBoxMesh(w, h, d, tL, tR, tB, tT), offsetX: 0, offsetY: 0 })
       break
     }
     case 'parallelogram': {
@@ -365,15 +456,15 @@ function createCellMeshes(
     case 'verticalLine': {
       const gap2 = GAP / 2
       const halfW = w / 2 - gap2
-      out.push({ mesh: new THREE.Mesh(new THREE.BoxGeometry(halfW, h, d), makePanelMaterial()), offsetX: -w / 4 - gap2 / 2, offsetY: 0 })
-      out.push({ mesh: new THREE.Mesh(new THREE.BoxGeometry(halfW, h, d), makePanelMaterial()), offsetX: w / 4 + gap2 / 2, offsetY: 0 })
+      out.push({ mesh: createPanelBoxMesh(halfW, h, d, tL, tR, tB, tT), offsetX: -w / 4 - gap2 / 2, offsetY: 0 })
+      out.push({ mesh: createPanelBoxMesh(halfW, h, d, tL, tR, tB, tT), offsetX: w / 4 + gap2 / 2, offsetY: 0 })
       break
     }
     case 'horizontalLine': {
       const gap2 = GAP / 2
       const halfH = h / 2 - gap2
-      out.push({ mesh: new THREE.Mesh(new THREE.BoxGeometry(w, halfH, d), makePanelMaterial()), offsetX: 0, offsetY: h / 4 + gap2 / 2 })
-      out.push({ mesh: new THREE.Mesh(new THREE.BoxGeometry(w, halfH, d), makePanelMaterial()), offsetX: 0, offsetY: -h / 4 - gap2 / 2 })
+      out.push({ mesh: createPanelBoxMesh(w, halfH, d, tL, tR, tB, tT), offsetX: 0, offsetY: h / 4 + gap2 / 2 })
+      out.push({ mesh: createPanelBoxMesh(w, halfH, d, tL, tR, tB, tT), offsetX: 0, offsetY: -h / 4 - gap2 / 2 })
       break
     }
     case 'twoVertical': {
@@ -381,7 +472,7 @@ function createCellMeshes(
       const thirdW = w / 3 - gap3
       for (let i = 0; i < 3; i++) {
         const ox = (i - 1) * (w / 3) + w / 6
-        out.push({ mesh: new THREE.Mesh(new THREE.BoxGeometry(thirdW, h, d), makePanelMaterial()), offsetX: ox, offsetY: 0 })
+        out.push({ mesh: createPanelBoxMesh(thirdW, h, d, tL, tR, tB, tT), offsetX: ox, offsetY: 0 })
       }
       break
     }
@@ -390,7 +481,7 @@ function createCellMeshes(
       const thirdH = h / 3 - gap3
       for (let i = 0; i < 3; i++) {
         const oy = (i - 1) * (h / 3) + h / 6
-        out.push({ mesh: new THREE.Mesh(new THREE.BoxGeometry(w, thirdH, d), makePanelMaterial()), offsetX: 0, offsetY: oy })
+        out.push({ mesh: createPanelBoxMesh(w, thirdH, d, tL, tR, tB, tT), offsetX: 0, offsetY: oy })
       }
       break
     }
@@ -420,8 +511,7 @@ function createCellMeshes(
         [w / 4 - sw / 2, -h / 4 + sh / 2],
       ]
       for (const [ox, oy] of positions) {
-        const mesh = new THREE.Mesh(new THREE.BoxGeometry(sw, sh, d), makePanelMaterial())
-        out.push({ mesh, offsetX: ox, offsetY: oy })
+        out.push({ mesh: createPanelBoxMesh(sw, sh, d, tL, tR, tB, tT), offsetX: ox, offsetY: oy })
       }
       break
     }
@@ -433,8 +523,7 @@ function createCellMeshes(
         for (let c = 0; c < 3; c++) {
           const ox = (c - 1) * (w / 3) + w / 6
           const oy = (r - 1) * (h / 3) + h / 6
-          const mesh = new THREE.Mesh(new THREE.BoxGeometry(sw, sh, d), makePanelMaterial())
-          out.push({ mesh, offsetX: ox, offsetY: oy })
+          out.push({ mesh: createPanelBoxMesh(sw, sh, d, tL, tR, tB, tT), offsetX: ox, offsetY: oy })
         }
       }
       break
@@ -510,14 +599,17 @@ function createCellMeshes(
       break
     }
     default: {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), makePanelMaterial())
-      out.push({ mesh, offsetX: 0, offsetY: 0 })
+      out.push({ mesh: createPanelBoxMesh(w, h, d, tL, tR, tB, tT), offsetX: 0, offsetY: 0 })
     }
   }
-  if (typology !== 'square') {
-    for (const { mesh, offsetX, offsetY } of out) {
-      const g = mesh.geometry as THREE.BufferGeometry
-      if (g) applyFacadeCellPlanarUVs(g, w, h, offsetY, offsetX)
+  // Custom extrudes / frusta often lack UVs; plain BoxGeometry has them. Tapered square panels use bilinear
+  // frusta without UVs — textures would not map until we project façade-space (u,v) from local x,y.
+  for (const { mesh, offsetX, offsetY } of out) {
+    const g = mesh.geometry as THREE.BufferGeometry
+    if (!g) continue
+    const hasUv = !!g.getAttribute('uv')
+    if (typology !== 'square' || !hasUv) {
+      applyFacadeCellPlanarUVs(g, w, h, offsetY, offsetX)
     }
   }
   return out
@@ -575,7 +667,18 @@ export function FacadeBuilding({
     gl.domElement.style.cursor = selectionToolEnabled && hovered ? 'pointer' : 'default'
   }, [selectionToolEnabled, hovered, gl])
 
-  const { columns, rows, style, transform, tiltAngle, typology, typologyParam } = settings
+  const {
+    columns,
+    rows,
+    style,
+    tiltAngle,
+    leftEndThickness,
+    rightEndThickness,
+    bottomEndThickness,
+    topEndThickness,
+    typology,
+    typologyParam,
+  } = settings
 
   /** Upward triangles share bottom corners / stacked apexes; normal GAP would show as dark strips between cells. */
   const cellGap = typology === 'triangleDown' ? 0 : GAP
@@ -626,18 +729,28 @@ export function FacadeBuilding({
     const list: { mesh: THREE.Mesh; col: number; row: number; stripeIndex: number }[] = []
     const startX = -FACADE_W / 2 + cellGap + adjustedPanelW / 2
     const startY = cellGap + adjustedPanelH / 2
+    const baseDepth = panelDepthFromThicknessSlider(tiltAngle)
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < columns; c++) {
         const baseX = startX + c * (adjustedPanelW + cellGap)
         const baseY = startY + r * (adjustedPanelH + cellGap)
-        const [rx, ry, rz] = getPanelRotation(c, r, columns, rows, transform, tiltAngle)
 
-        const cellMeshes = createCellMeshes(typology, typologyParam, adjustedPanelW, adjustedPanelH)
-        const baseZ = DEPTH / 2 + PANEL_DEPTH / 2
+        const cellMeshes = createCellMeshes(
+          typology,
+          typologyParam,
+          adjustedPanelW,
+          adjustedPanelH,
+          baseDepth,
+          leftEndThickness,
+          rightEndThickness,
+          bottomEndThickness,
+          topEndThickness
+        )
+        const baseZ = DEPTH / 2 + baseDepth / 2
         for (const { mesh, offsetX, offsetY, rotationZ, offsetZ } of cellMeshes) {
           mesh.position.set(baseX + offsetX, baseY + offsetY, baseZ + (offsetZ ?? 0))
-          mesh.rotation.set(rx, ry, rz + (rotationZ ?? 0))
+          mesh.rotation.set(0, 0, rotationZ ?? 0)
           mesh.castShadow = true
           mesh.receiveShadow = true
           if (typology === 'diagonal' || typology === 'triangleDown') mesh.userData.cellGroupKey = `${c}-${r}`
@@ -646,12 +759,25 @@ export function FacadeBuilding({
       }
     }
     return list
-  }, [columns, rows, adjustedPanelW, adjustedPanelH, cellGap, transform, tiltAngle, typology, typologyParam])
+  }, [
+    columns,
+    rows,
+    adjustedPanelW,
+    adjustedPanelH,
+    cellGap,
+    tiltAngle,
+    leftEndThickness,
+    rightEndThickness,
+    bottomEndThickness,
+    topEndThickness,
+    typology,
+    typologyParam,
+  ])
 
   useEffect(() => {
     panelRefs.current = panels.map((p) => p.mesh)
     onPanelsReady?.(
-      panels.map((p) => ({ uuid: p.mesh.uuid, row: p.row, stripeIndex: p.stripeIndex }))
+      panels.map((p) => ({ uuid: p.mesh.uuid, row: p.row, col: p.col, stripeIndex: p.stripeIndex }))
     )
   }, [panels, onPanelsReady])
 

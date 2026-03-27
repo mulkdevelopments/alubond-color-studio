@@ -2,8 +2,8 @@ import { useEffect, useState, type CSSProperties, type Ref } from 'react'
 import { getThemeTokens, brand, glassChrome, type Theme } from '../theme'
 import type { AlubondColor } from '../types'
 import {
-  buildPaletteReferenceDataUrls,
-  colorUsesPanelTextureRefs,
+  anyColorUsesPanelTextureRefs,
+  buildPaletteReferenceDataUrlsMulti,
 } from '../utils/paletteReferenceImages'
 
 /** Image preview fills space between header and bottom film dock; keeps aspect ratio (no squashing). */
@@ -12,14 +12,14 @@ export function ImageStudioCenter({
   uploadedImage,
   resultImage,
   isProcessing,
-  selectedColor,
+  selectedColors,
   previewCaptureRef,
 }: {
   theme: Theme
   uploadedImage: string | null
   resultImage: string | null
   isProcessing: boolean
-  selectedColor: AlubondColor | null
+  selectedColors: AlubondColor[]
   /** Set on the bordered preview (photo + refs) for NanoBanana — exact pixels you see. */
   previewCaptureRef?: Ref<HTMLDivElement>
 }) {
@@ -27,18 +27,19 @@ export function ImageStudioCenter({
   const [paletteRefUrls, setPaletteRefUrls] = useState<string[]>([])
   const [refsLoading, setRefsLoading] = useState(false)
 
+  const refSkuKey = selectedColors.map((c) => c.sku).join('|')
   const showPaletteSidebar =
-    !!uploadedImage && !!selectedColor && colorUsesPanelTextureRefs(selectedColor)
+    !!uploadedImage && selectedColors.length > 0 && anyColorUsesPanelTextureRefs(selectedColors)
 
   useEffect(() => {
-    if (!uploadedImage || !selectedColor || !colorUsesPanelTextureRefs(selectedColor)) {
+    if (!uploadedImage || selectedColors.length === 0 || !anyColorUsesPanelTextureRefs(selectedColors)) {
       setPaletteRefUrls([])
       setRefsLoading(false)
       return
     }
     let cancelled = false
     setRefsLoading(true)
-    buildPaletteReferenceDataUrls(selectedColor).then((urls) => {
+    buildPaletteReferenceDataUrlsMulti(selectedColors).then((urls) => {
       if (!cancelled) {
         setPaletteRefUrls(urls)
         setRefsLoading(false)
@@ -47,10 +48,17 @@ export function ImageStudioCenter({
     return () => {
       cancelled = true
     }
-  }, [uploadedImage, selectedColor])
+  }, [uploadedImage, refSkuKey])
 
   /** Slightly lighter than pure black so letterboxing matches the scene, not a harsh void */
   const imageMat = 'rgba(22, 22, 24, 0.92)'
+
+  const applyingLabel =
+    selectedColors.length === 0
+      ? 'facade'
+      : selectedColors.length === 1
+        ? selectedColors[0].name
+        : `${selectedColors.length} finishes`
 
   const rootShell: CSSProperties = {
     flex: 1,
@@ -268,7 +276,7 @@ export function ImageStudioCenter({
                       }}
                     />
                     <p style={{ margin: 0, fontSize: 13, color: '#e5e5e5', padding: '0 16px', textAlign: 'center' }}>
-                      Applying {selectedColor?.name ?? 'facade'}…
+                      Applying {applyingLabel}…
                     </p>
                     <style>{`@keyframes imgStudioSpin { to { transform: rotate(360deg); } }`}</style>
                   </div>

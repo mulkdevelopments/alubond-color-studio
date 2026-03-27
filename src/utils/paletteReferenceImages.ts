@@ -110,6 +110,29 @@ export function colorUsesPanelTextureRefs(color: AlubondColor | null): boolean {
   return !!(color.panelTexture || color.panelTextureSecondary)
 }
 
+/** True if any selected colour contributes panel PNG references (Image Studio / dialog). */
+export function anyColorUsesPanelTextureRefs(colors: AlubondColor[]): boolean {
+  return colors.some((c) => colorUsesPanelTextureRefs(c))
+}
+
+/**
+ * Merged panel reference JPEGs for several library colours (deduped, order preserved, capped).
+ */
+export async function buildPaletteReferenceDataUrlsMulti(colors: AlubondColor[]): Promise<string[]> {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const color of colors) {
+    const batch = await buildPaletteReferenceDataUrls(color)
+    for (const u of batch) {
+      if (seen.has(u)) continue
+      seen.add(u)
+      out.push(u)
+      if (out.length >= MAX_PALETTE_REFS) return out
+    }
+  }
+  return out
+}
+
 /**
  * JPEG data URLs for Alubond **panel texture** finishes only (sent after the building photo).
  * Returns [] for null colour, solid colours, or if PNGs fail to load — use `buildFacadePrompt` for those.

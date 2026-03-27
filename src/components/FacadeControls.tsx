@@ -1,8 +1,11 @@
 import { useEffect } from 'react'
 import type { Theme } from '../theme'
 import { getThemeTokens, brand, glassChrome } from '../theme'
-import type { FacadeSettings, PanelTransform, TypologyType } from './FacadeBuilding'
+import type { FacadeSettings, TypologyType } from './FacadeBuilding'
 import type { AlubondColor } from '../types'
+import type { PaletteLayout } from '../utils/panelMaterialBulkApply'
+import { getPanelTextureUrl } from '../utils/panelTextureUrl'
+import { getFusionTextureCycle } from '../utils/fusionPanelCycle'
 
 /** Only these typologies are exposed in the UI. */
 const VISIBLE_TYPOLOGIES: TypologyType[] = [
@@ -126,21 +129,27 @@ interface FacadeControlsProps {
   theme: Theme
   settings: FacadeSettings
   onChange: (settings: FacadeSettings) => void
-  selectedColor?: AlubondColor | null
+  selectedColors?: AlubondColor[]
   onApplyAll?: () => void
   /** 'horizontal' = bar layout; 'vertical' = stacked in left panel */
   layout?: 'horizontal' | 'vertical'
 }
 
-const TRANSFORMS: { value: PanelTransform; label: string }[] = [
-  { value: 'flat', label: 'Flat' },
-  { value: 'alternate', label: 'Alternate' },
-  { value: 'wave', label: 'Wave' },
-  { value: 'fold', label: 'Fold' },
-  { value: 'diagonal', label: 'Diagonal' },
+const PALETTE_LAYOUTS: { value: PaletteLayout; label: string; title: string }[] = [
+  { value: 'linear', label: 'Linear', title: 'One palette per panel in read order (left→right, top→bottom)' },
+  { value: 'horizontal_bands', label: 'Row bands', title: 'Full horizontal row shares one palette; cycles down the façade' },
+  { value: 'vertical_bands', label: 'Column bands', title: 'Full vertical column shares one palette; cycles across' },
+  { value: 'checker', label: 'Checker', title: 'Diagonal checker: (row + column) mod palette count' },
 ]
 
-export function FacadeControls({ theme, settings, onChange, selectedColor, onApplyAll, layout = 'horizontal' }: FacadeControlsProps) {
+export function FacadeControls({
+  theme,
+  settings,
+  onChange,
+  selectedColors = [],
+  onApplyAll,
+  layout = 'horizontal',
+}: FacadeControlsProps) {
   const t = getThemeTokens(theme)
   const isVertical = layout === 'vertical'
 
@@ -264,23 +273,23 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
         </div>
       ))}
       {divider()}
-      {sectionBlock('Transform', (
+      {sectionBlock('Palette layout', (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {TRANSFORMS.map((tr) => (
+          {PALETTE_LAYOUTS.map((pl) => (
             <button
-              key={tr.value}
+              key={pl.value}
               type="button"
-              title={tr.label}
-              onClick={() => onChange({ ...settings, transform: tr.value })}
-              style={pillBtn(settings.transform === tr.value)}
+              title={pl.title}
+              onClick={() => onChange({ ...settings, paletteLayout: pl.value })}
+              style={pillBtn(settings.paletteLayout === pl.value)}
             >
-              {tr.label}
+              {pl.label}
             </button>
           ))}
         </div>
       ))}
       {divider()}
-      {sectionBlock('Tilt', (
+      {sectionBlock('Thickness', (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input
             type="range"
@@ -290,15 +299,97 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
             onChange={(e) => onChange({ ...settings, tiltAngle: Number(e.target.value) })}
             style={{ width: isVertical ? '100%' : 70, maxWidth: 200 }}
           />
-          <span style={{ fontSize: 11, color: t.textMuted, minWidth: 26 }}>{settings.tiltAngle}°</span>
+          <span style={{ fontSize: 11, color: t.textMuted, minWidth: 36 }}>
+            {((1 + (settings.tiltAngle / 45) * 2) * 100).toFixed(0)}%
+          </span>
+        </div>
+      ))}
+      {sectionBlock('Edge tapers', (
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+          title="Each slider boosts depth at that panel edge up to 4× the nominal depth toward the opposite side (same ratio as the tapered-bottom typology). Corners combine both axes."
+        >
+          {(
+            [
+              { key: 'leftEndThickness' as const, label: 'Left' },
+              { key: 'rightEndThickness' as const, label: 'Right' },
+              { key: 'bottomEndThickness' as const, label: 'Bottom' },
+              { key: 'topEndThickness' as const, label: 'Top' },
+            ] as const
+          ).map(({ key, label }) => (
+            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, color: t.textMuted, width: 44, flexShrink: 0 }}>{label}</span>
+              <input
+                type="range"
+                min={0}
+                max={45}
+                value={settings[key]}
+                onChange={(e) => onChange({ ...settings, [key]: Number(e.target.value) })}
+                style={{ flex: 1, minWidth: 0, maxWidth: 200 }}
+              />
+              <span style={{ fontSize: 11, color: t.textMuted, minWidth: 40, textAlign: 'right' }}>
+                {(1 + (settings[key] / 45) * 3).toFixed(2)}×
+              </span>
+            </div>
+          ))}
         </div>
       ))}
       {divider()}
       {sectionBlock('Surface', (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {selectedColor ? (
+          {selectedColors.length > 0 ? (
             <>
-              <div style={{ width: 26, height: 26, borderRadius: 8, background: selectedColor.hex, border: '1px solid rgba(0,0,0,0.15)', boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', maxWidth: 200 }}>
+                {selectedColors.slice(0, 8).map((c) => {
+                  const cycle = getFusionTextureCycle(c)
+                  const fusionStrip = cycle && cycle.length >= 2
+                  return (
+                    <div
+                      key={c.sku}
+                      title={`${c.sku} · ${c.name}`}
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 6,
+                        border: '1px solid rgba(0,0,0,0.15)',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                        flexShrink: 0,
+                        overflow: 'hidden',
+                        display: fusionStrip ? 'flex' : 'block',
+                      }}
+                    >
+                      {fusionStrip ? (
+                        cycle!.map((ref, i) => (
+                          <div
+                            key={`${ref.folder}-${ref.fileId}-${i}`}
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              background: `url("${getPanelTextureUrl(ref)}") center/cover`,
+                            }}
+                          />
+                        ))
+                      ) : c.panelTexture ? (
+                        <div
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            background: `url("${getPanelTextureUrl(c.panelTexture)}") center/cover`,
+                          }}
+                        />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', background: c.hex }} />
+                      )}
+                    </div>
+                  )
+                })}
+                {selectedColors.length > 8 ? (
+                  <span style={{ fontSize: 10, color: t.textMuted, fontWeight: 600 }}>+{selectedColors.length - 8}</span>
+                ) : null}
+              </div>
+              <span style={{ fontSize: 10, color: t.textMuted, whiteSpace: 'nowrap' }}>
+                {selectedColors.length} palette{selectedColors.length === 1 ? '' : 's'}
+              </span>
               <button
                 type="button"
                 onClick={onApplyAll}
@@ -349,7 +440,7 @@ export function FacadeControls({ theme, settings, onChange, selectedColor, onApp
             Facade controls
           </h3>
           <p style={{ margin: '5px 0 0', fontSize: 11, color: t.textMuted, lineHeight: 1.45 }}>
-            Style, proportion & transform
+            Style, proportion & palette layout
           </p>
         </div>
         {content}

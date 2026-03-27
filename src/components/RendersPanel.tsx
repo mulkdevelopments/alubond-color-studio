@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import type { Theme } from '../theme'
-import { getThemeTokens, brand, glassChrome } from '../theme'
+import { getThemeTokens, brand, getWorkspaceShell, type WorkspaceAppearance } from '../theme'
 
 export interface GeneratedRender {
   id: string
@@ -12,6 +12,7 @@ export interface GeneratedRender {
 
 interface RendersPanelProps {
   theme: Theme
+  workspaceAppearance: WorkspaceAppearance
   renders: GeneratedRender[]
   onGenerate: () => void
   onDelete: (id: string) => void
@@ -273,6 +274,7 @@ const MAX_COMPARE = 2
 
 export function RendersPanel({
   theme,
+  workspaceAppearance,
   renders,
   onGenerate,
   onDelete,
@@ -282,6 +284,7 @@ export function RendersPanel({
   onAiEnabledChange,
 }: RendersPanelProps) {
   const t = getThemeTokens(theme)
+  const shell = getWorkspaceShell(workspaceAppearance)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [compareOpen, setCompareOpen] = useState(false)
   const [fullscreenRender, setFullscreenRender] = useState<GeneratedRender | null>(null)
@@ -318,7 +321,7 @@ export function RendersPanel({
     transition: 'all 0.15s ease',
   }
 
-  const isWorkspace = theme === 'workspace'
+  const isWorkspace = true
 
   return (
     <aside
@@ -337,12 +340,12 @@ export function RendersPanel({
       <header
         style={{
           padding: '16px 18px',
-          borderBottom: `1px solid ${isWorkspace ? glassChrome.borderSoft : t.border}`,
+          borderBottom: `1px solid ${isWorkspace ? shell.borderSoft : t.border}`,
           flexShrink: 0,
-          background: isWorkspace ? glassChrome.surface : 'transparent',
-          backdropFilter: isWorkspace ? glassChrome.blurMedium : undefined,
-          WebkitBackdropFilter: isWorkspace ? glassChrome.blurMedium : undefined,
-          boxShadow: isWorkspace ? glassChrome.specularSoft : undefined,
+          background: isWorkspace ? shell.surface : 'transparent',
+          backdropFilter: isWorkspace ? shell.blurMedium : undefined,
+          WebkitBackdropFilter: isWorkspace ? shell.blurMedium : undefined,
+          boxShadow: isWorkspace ? shell.specularSoft : undefined,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

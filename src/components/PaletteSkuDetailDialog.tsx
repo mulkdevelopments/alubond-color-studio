@@ -4,19 +4,40 @@ import type { AlubondColor } from '../types'
 import { getFinishLabel } from '../data/palettes'
 import { getPanelTextureUrl } from '../utils/panelTextureUrl'
 import { getFusionTextureCycle } from '../utils/fusionPanelCycle'
-import { SkuBarcode } from './SkuBarcode'
-import { brand } from '../theme'
+import { SkuQrCode } from './SkuQrCode'
+import { brand, getStudioModalChrome, type Theme } from '../theme'
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+const PANEL_PREVIEW_MAX = 220
+
+function Row({
+  label,
+  children,
+  labelColor,
+  valueColor,
+}: {
+  label: string
+  children: React.ReactNode
+  labelColor: string
+  valueColor: string
+}) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12, fontSize: 13, alignItems: 'start' }}>
-      <div style={{ color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>{label}</div>
-      <div style={{ color: 'rgba(255,255,255,0.92)', lineHeight: 1.45 }}>{children}</div>
+    <div style={{ display: 'grid', gridTemplateColumns: '128px 1fr', gap: 12, fontSize: 13, alignItems: 'start' }}>
+      <div style={{ color: labelColor, fontWeight: 600 }}>{label}</div>
+      <div style={{ color: valueColor, lineHeight: 1.45 }}>{children}</div>
     </div>
   )
 }
 
-export function PaletteSkuDetailDialog({ color, onClose }: { color: AlubondColor; onClose: () => void }) {
+export function PaletteSkuDetailDialog({
+  color,
+  theme,
+  onClose,
+}: {
+  color: AlubondColor
+  theme: Theme
+  onClose: () => void
+}) {
+  const panel = getStudioModalChrome(theme)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -61,19 +82,19 @@ export function PaletteSkuDetailDialog({ color, onClose }: { color: AlubondColor
           border: 'none',
           margin: 0,
           padding: 0,
-          background: 'rgba(0,0,0,0.65)',
+          background: panel.overlay,
           cursor: 'pointer',
         }}
       />
       <div
         style={{
           position: 'relative',
-          maxWidth: 440,
+          maxWidth: 560,
           width: '100%',
           borderRadius: 16,
-          border: '1px solid rgba(255,255,255,0.12)',
-          background: '#0a0a0a',
-          boxShadow: '0 24px 64px rgba(0,0,0,0.55)',
+          border: `1px solid ${panel.panelBorder}`,
+          background: panel.panelBg,
+          boxShadow: panel.panelShadow,
           padding: '24px 24px 20px',
           maxHeight: 'min(90vh, 640px)',
           overflow: 'auto',
@@ -82,56 +103,114 @@ export function PaletteSkuDetailDialog({ color, onClose }: { color: AlubondColor
       >
         <h2
           id="palette-sku-dialog-title"
-          style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: '#f5f5f5', lineHeight: 1.25 }}
+          style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: panel.text, lineHeight: 1.25 }}
         >
           {color.name}
         </h2>
-        <p style={{ margin: '0 0 20px', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{color.collection}</p>
+        <p style={{ margin: '0 0 20px', fontSize: 12, color: panel.muted }}>{color.collection}</p>
 
         <div
           style={{
-            padding: '12px 14px',
+            padding: 16,
             background: '#fff',
             borderRadius: 10,
             marginBottom: 20,
             display: 'flex',
-            justifyContent: 'center',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 12,
             overflow: 'auto',
           }}
         >
-          <SkuBarcode value={color.sku} height={52} barWidth={1.8} displayValue />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <Row label="SKU / code">{color.sku}</Row>
-          <Row label="Finish">{getFinishLabel(color)}</Row>
-          {color.fusionOf && color.fusionOf.length >= 2 ? (
-            <Row label="Fusion">{color.fusionOf.join(' + ')}</Row>
-          ) : null}
-          {color.panelTexture ? (
-            <Row label="Panel texture">
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: 10,
+              justifyContent: 'center',
+              alignItems: 'center',
+              width: '100%',
+            }}
+          >
+            {color.panelTexture ? (
               <img
                 src={getPanelTextureUrl(color.panelTexture)}
                 alt=""
-                style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)' }}
+                style={{
+                  maxWidth: color.panelTextureSecondary ? PANEL_PREVIEW_MAX * 0.92 : PANEL_PREVIEW_MAX,
+                  maxHeight: PANEL_PREVIEW_MAX,
+                  width: 'auto',
+                  height: 'auto',
+                  borderRadius: 10,
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  display: 'block',
+                }}
               />
-            </Row>
-          ) : null}
-          {color.panelTextureSecondary ? (
-            <Row label="Panel B">
+            ) : (
+              <div
+                style={{
+                  width: Math.min(PANEL_PREVIEW_MAX, 200),
+                  aspectRatio: '1',
+                  borderRadius: 10,
+                  background: color.hex,
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.25)',
+                }}
+              />
+            )}
+            {color.panelTextureSecondary ? (
               <img
                 src={getPanelTextureUrl(color.panelTextureSecondary)}
                 alt=""
-                style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)' }}
+                style={{
+                  maxWidth: PANEL_PREVIEW_MAX * 0.92,
+                  maxHeight: PANEL_PREVIEW_MAX,
+                  width: 'auto',
+                  height: 'auto',
+                  borderRadius: 10,
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  display: 'block',
+                }}
               />
+            ) : null}
+          </div>
+          <span style={{ fontSize: 13, color: '#333', fontWeight: 600, letterSpacing: '0.02em', textAlign: 'center' }}>
+            {color.collection} · {color.sku}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Row label="SKU / code" labelColor={panel.skuRowLabel} valueColor={panel.skuRowValue}>
+            {color.sku}
+          </Row>
+          <Row label="Finish" labelColor={panel.skuRowLabel} valueColor={panel.skuRowValue}>
+            {getFinishLabel(color)}
+          </Row>
+          {color.fusionOf && color.fusionOf.length >= 2 ? (
+            <Row label="Fusion" labelColor={panel.skuRowLabel} valueColor={panel.skuRowValue}>
+              {color.fusionOf.join(' + ')}
             </Row>
           ) : null}
+          <Row label="QR code" labelColor={panel.skuRowLabel} valueColor={panel.skuRowValue}>
+            <div
+              style={{
+                padding: 12,
+                background: '#fff',
+                borderRadius: 10,
+                display: 'inline-block',
+                lineHeight: 0,
+              }}
+            >
+              <SkuQrCode value={color.sku} size={PANEL_PREVIEW_MAX} marginSize={2} />
+            </div>
+          </Row>
           {cycle && cycle.length > 0 ? (
-            <Row label="Fusion cycle">
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <Row label="Fusion cycle" labelColor={panel.skuRowLabel} valueColor={panel.skuRowValue}>
+              <ul style={{ margin: 0, paddingLeft: 18, color: panel.text }}>
                 {cycle.map((p, i) => (
                   <li key={`${p.folder}-${p.fileId}-${i}`} style={{ fontSize: 12, marginBottom: 4 }}>
-                    <code>
+                    <code style={{ color: panel.text }}>
                       {p.folder}/{p.fileId}
                     </code>
                   </li>

@@ -1,27 +1,28 @@
 import type { AlubondColor, PaletteStyle } from '../types'
-import type { Theme } from '../theme'
-import { brand, glassChrome } from '../theme'
+import type { Theme, WorkspaceAppearance } from '../theme'
+import { brand, getWorkspaceShell } from '../theme'
 import { libraryTabs } from '../data/palettes'
 import { FilmStripColorRail } from './FilmStripColorRail'
 import { FusionAiPanel } from './FusionAiPanel'
 
 export function LibraryFilmBottomDock({
   theme,
+  workspaceAppearance,
   libraryTab,
   onLibraryTabChange,
   colours,
-  selectedColor,
-  onSelectColor,
-  isSameColor,
+  selectedColors,
+  onTogglePaletteColor,
 }: {
   theme: Theme
+  workspaceAppearance: WorkspaceAppearance
   libraryTab: PaletteStyle
   onLibraryTabChange: (id: PaletteStyle) => void
   colours: AlubondColor[]
-  selectedColor: AlubondColor | null
-  onSelectColor: (color: AlubondColor | null) => void
-  isSameColor: (a: AlubondColor | null, b: AlubondColor | null) => boolean
+  selectedColors: AlubondColor[]
+  onTogglePaletteColor: (color: AlubondColor) => void
 }) {
+  const shell = getWorkspaceShell(workspaceAppearance)
   return (
     <div
       style={{
@@ -61,15 +62,15 @@ export function LibraryFilmBottomDock({
                 padding: '8px 14px',
                 fontSize: 11,
                 fontWeight: isActive ? 700 : 500,
-                background: isActive ? glassChrome.iconBgActive : glassChrome.iconBg,
-                border: `1px solid ${isActive ? glassChrome.borderAccent : glassChrome.borderSoft}`,
+                background: isActive ? shell.iconBgActive : shell.iconBg,
+                border: `1px solid ${isActive ? shell.borderAccent : shell.borderSoft}`,
                 borderRadius: 999,
-                color: isActive ? brand.orange : glassChrome.textMuted,
+                color: isActive ? brand.orange : shell.textMuted,
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.15s ease',
                 letterSpacing: '0.02em',
-                boxShadow: isActive ? glassChrome.specular : glassChrome.specularSoft,
+                boxShadow: isActive ? shell.specular : shell.specularSoft,
               }}
             >
               {tab.label}
@@ -82,9 +83,8 @@ export function LibraryFilmBottomDock({
         <FusionAiPanel
           variant="dock"
           theme={theme}
-          selectedColor={selectedColor}
-          onSelectColor={onSelectColor}
-          isSameColor={isSameColor}
+          selectedColors={selectedColors}
+          onTogglePaletteColor={onTogglePaletteColor}
         />
       ) : null}
 
@@ -92,9 +92,8 @@ export function LibraryFilmBottomDock({
         variant="bottomBar"
         theme={theme}
         colours={colours}
-        selectedColor={selectedColor}
-        onSelectColor={onSelectColor}
-        isSameColor={isSameColor}
+        selectedColors={selectedColors}
+        onTogglePaletteColor={onTogglePaletteColor}
       />
     </div>
   )

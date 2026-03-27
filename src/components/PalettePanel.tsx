@@ -4,15 +4,15 @@ import type { Theme } from '../theme'
 import { getThemeTokens, brand } from '../theme'
 import { libraryTabs, getColoursByStyle, getFinishLabel } from '../data/palettes'
 import { getPanelTextureUrl } from '../utils/panelTextureUrl'
-import { getFusionTextureCycle } from '../utils/fusionPanelCycle'
 import { FilmStripColorRail } from './FilmStripColorRail'
 import { FusionAiPanel } from './FusionAiPanel'
 
 interface PalettePanelProps {
   theme: Theme
   palettes: Palette[]
-  selectedColor: AlubondColor | null
-  onSelectColor: (color: AlubondColor | null) => void
+  selectedColors: AlubondColor[]
+  onTogglePaletteColor: (color: AlubondColor) => void
+  onClearSelectedColors: () => void
   compareMode: 'single' | 'split'
   comparePaletteId: string | null
   onComparePaletteId: (id: string | null) => void
@@ -25,16 +25,12 @@ interface PalettePanelProps {
   hideLibraryTabs?: boolean
 }
 
-function isSameColor(a: AlubondColor | null, b: AlubondColor | null): boolean {
-  if (!a || !b) return a === b
-  return a.sku === b.sku
-}
-
 export function PalettePanel({
   theme,
   palettes: palettesList,
-  selectedColor,
-  onSelectColor,
+  selectedColors,
+  onTogglePaletteColor,
+  onClearSelectedColors,
   compareMode,
   comparePaletteId,
   onComparePaletteId,
@@ -54,9 +50,7 @@ export function PalettePanel({
   const colours = coloursByStyle[activeTab] ?? []
 
   const renderSelectedPreview = () => {
-    if (!selectedColor) return null
-    const selCycle = getFusionTextureCycle(selectedColor)
-    const selMulti = !!(selCycle && selCycle.length >= 2)
+    if (selectedColors.length === 0) return null
     return (
       <div
         style={{
@@ -64,107 +58,61 @@ export function PalettePanel({
           padding: '10px 16px',
           borderBottom: `1px solid ${t.border}`,
           display: 'flex',
+          flexWrap: 'wrap',
           alignItems: 'center',
           gap: 10,
           background:
-            theme === 'dark' || theme === 'workspace'
-              ? 'rgba(232,119,34,0.08)'
-              : 'rgba(232,119,34,0.04)',
+            theme === 'dark' ? 'rgba(232,119,34,0.08)' : 'rgba(232,119,34,0.05)',
         }}
       >
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 10,
-            display:
-              selMulti ||
-              (selectedColor.finish === 'fusion' &&
-                (selectedColor.hexSecondary != null || selectedColor.panelTextureSecondary != null))
-                ? 'flex'
-                : 'block',
-            boxShadow:
-              selectedColor.panelTexture || selectedColor.panelTextureSecondary || selMulti
-                ? '0 3px 10px rgba(0,0,0,0.2)'
-                : `inset 0 0 0 1px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.1)`,
-            flexShrink: 0,
-            overflow: 'hidden',
-            background:
-              selectedColor.panelTexture && !selectedColor.panelTextureSecondary && !selMulti
-                ? `url("${getPanelTextureUrl(selectedColor.panelTexture)}") center/cover`
-                : undefined,
-          }}
-        >
-          {selMulti && selCycle ? (
-            selCycle.map((ref, idx) => (
-              <div
-                key={`${ref.folder}-${ref.fileId}-${idx}`}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  background: `url("${getPanelTextureUrl(ref)}") center/cover`,
-                }}
-              />
-            ))
-          ) : selectedColor.finish === 'fusion' &&
-            selectedColor.panelTexture &&
-            selectedColor.panelTextureSecondary ? (
-            <>
+        {selectedColors.map((c) => {
+          return (
+            <div
+              key={c.sku}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                maxWidth: 200,
+                minWidth: 0,
+              }}
+            >
               <div
                 style={{
-                  flex: 1,
-                  background: `url("${getPanelTextureUrl(selectedColor.panelTexture)}") center/cover`,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  flexShrink: 0,
+                  overflow: 'hidden',
+                  boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.12)`,
+                  background: c.panelTexture
+                    ? `url("${getPanelTextureUrl(c.panelTexture)}") center/cover`
+                    : c.hex,
                 }}
               />
-              <div
-                style={{
-                  flex: 1,
-                  background: `url("${getPanelTextureUrl(selectedColor.panelTextureSecondary)}") center/cover`,
-                }}
-              />
-            </>
-          ) : selectedColor.finish === 'fusion' &&
-            selectedColor.panelTexture &&
-            selectedColor.hexSecondary &&
-            !selectedColor.panelTextureSecondary ? (
-            <>
-              <div
-                style={{
-                  flex: 1,
-                  background: `url("${getPanelTextureUrl(selectedColor.panelTexture)}") center/cover`,
-                }}
-              />
-              <div style={{ flex: 1, background: selectedColor.hexSecondary }} />
-            </>
-          ) : selectedColor.finish === 'fusion' && selectedColor.hexSecondary ? (
-            <>
-              <div style={{ flex: 1, background: selectedColor.hex }} />
-              <div style={{ flex: 1, background: selectedColor.hexSecondary }} />
-            </>
-          ) : !selectedColor.panelTexture ? (
-            <div style={{ width: '100%', height: '100%', background: selectedColor.hex }} />
-          ) : null}
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: t.text,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {selectedColor.name}
-          </div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>
-            {selectedColor.sku} · {getFinishLabel(selectedColor)}
-          </div>
-        </div>
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: t.text,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {c.name}
+                </div>
+                <div style={{ fontSize: 9, color: t.textMuted }}>
+                  {c.sku} · {getFinishLabel(c)}
+                </div>
+              </div>
+            </div>
+          )
+        })}
         <button
           type="button"
-          onClick={() => onSelectColor(null)}
+          onClick={onClearSelectedColors}
           style={{
             marginLeft: 'auto',
             padding: '4px 8px',
@@ -177,7 +125,7 @@ export function PalettePanel({
             cursor: 'pointer',
           }}
         >
-          Clear
+          Clear all
         </button>
       </div>
     )
@@ -270,9 +218,8 @@ export function PalettePanel({
       {activeTab === 'Fusion' && !hideLibraryTabs ? (
         <FusionAiPanel
           theme={theme}
-          selectedColor={selectedColor}
-          onSelectColor={onSelectColor}
-          isSameColor={isSameColor}
+          selectedColors={selectedColors}
+          onTogglePaletteColor={onTogglePaletteColor}
         />
       ) : null}
       </div>
@@ -281,9 +228,8 @@ export function PalettePanel({
         <FilmStripColorRail
           theme={theme}
           colours={colours}
-          selectedColor={selectedColor}
-          onSelectColor={onSelectColor}
-          isSameColor={isSameColor}
+          selectedColors={selectedColors}
+          onTogglePaletteColor={onTogglePaletteColor}
         />
       )}
 

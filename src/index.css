@@ -60,6 +60,15 @@ body,
   isolation: isolate;
 }
 
+.app-shell--light .app-liquid-mesh {
+  background: radial-gradient(ellipse 110% 88% at 14% 12%, rgba(255, 255, 255, 0.45), transparent 58%),
+    radial-gradient(ellipse 78% 68% at 90% 8%, rgba(232, 119, 34, 0.08), transparent 54%),
+    radial-gradient(ellipse 100% 58% at 50% 96%, rgba(27, 45, 91, 0.04), transparent 52%),
+    radial-gradient(ellipse 68% 48% at 68% 44%, rgba(255, 255, 255, 0.2), transparent 50%),
+    linear-gradient(175deg, #e8ecf4 0%, #f2f5fa 42%, #dde4f0 100%);
+  opacity: 0.95;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

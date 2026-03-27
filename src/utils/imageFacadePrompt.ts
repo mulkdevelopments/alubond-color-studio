@@ -63,6 +63,41 @@ export function buildFacadePromptMinimal(color: AlubondColor | null): string {
   )
 }
 
+/** Image Studio: describe several finishes for one façade (bands / zones / rhythm). */
+export function buildFacadePromptMulti(colors: AlubondColor[]): string {
+  if (colors.length === 0) return buildFacadePrompt(null)
+  if (colors.length === 1) return buildFacadePrompt(colors[0])
+  const segments = colors.map((c) => {
+    const name = sanitizePromptFragment(c.name, 80)
+    const hexRaw = c.hex.startsWith('#') ? c.hex : `#${c.hex}`
+    const hex = sanitizePromptFragment(hexRaw, 16)
+    const sku = sanitizePromptFragment(c.sku, 64)
+    const finish = sanitizePromptFragment(getFinishLabel(c), 60)
+    return `${name} ${hex} SKU ${sku} (${finish})`
+  })
+  return (
+    IMAGE_FACADE_PROMPT_BASE +
+    `Apply these Alubond finishes across the visible façade in a coherent rhythm (horizontal or vertical bands, distinct zones, or a regular panel grid)—not random noise: ${segments.join(' · ')}. ` +
+    'Photorealistic ACP panels, natural daylight, clear sky.'
+  )
+}
+
+export function buildFacadePromptMinimalMulti(colors: AlubondColor[]): string {
+  if (colors.length === 0) return buildFacadePromptMinimal(null)
+  if (colors.length === 1) return buildFacadePromptMinimal(colors[0])
+  const parts = colors.map((c) => {
+    const hex = sanitizePromptFragment(c.hex, 12)
+    const name = sanitizePromptFragment(c.name, 48)
+    const finish = sanitizePromptFragment(getFinishLabel(c), 48)
+    return `${name} ${hex} (${finish})`
+  })
+  return (
+    'Image edit: apply photorealistic aluminium composite panel facade only. ' +
+    `Multiple finishes: ${parts.join('; ')}. ` +
+    'Vary them in clear bands or zones on the façade. Keep building shape and windows unchanged. If the input has a reference strip on the side, omit it from the output—building only. Daylight, clear sky.'
+  )
+}
+
 /**
  * Explain workspace capture + strict output framing: refs column must not appear in the generated image.
  */

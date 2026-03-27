@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { brand, type Theme } from '../theme'
+import { brand, getStudioModalChrome, type Theme } from '../theme'
 import type { AlubondColor } from '../types'
 import {
-  buildPaletteReferenceDataUrls,
-  colorUsesPanelTextureRefs,
+  anyColorUsesPanelTextureRefs,
+  buildPaletteReferenceDataUrlsMulti,
 } from '../utils/paletteReferenceImages'
 
 const ASPECT_RATIOS = [
@@ -37,7 +37,7 @@ export type ImageStudioGenerateUiOptions = {
 type Props = {
   theme: Theme
   uploadedImage: string
-  selectedColor: AlubondColor
+  selectedColors: AlubondColor[]
   onClose: () => void
   onConfirm: (opts: ImageStudioGenerateUiOptions) => void
 }
@@ -45,21 +45,12 @@ type Props = {
 export function ImageStudioGenerateDialog({
   theme,
   uploadedImage,
-  selectedColor,
+  selectedColors,
   onClose,
   onConfirm,
 }: Props) {
-  void theme
-  /** Black modal chrome (consistent regardless of app theme). */
-  const panel = {
-    bg: '#000000',
-    border: 'rgba(255, 255, 255, 0.1)',
-    text: '#f0f0f0',
-    muted: 'rgba(255, 255, 255, 0.58)',
-    fieldBg: '#141414',
-    fieldBorder: 'rgba(255, 255, 255, 0.12)',
-    cancelBg: '#1a1a1a',
-  }
+  const panel = getStudioModalChrome(theme)
+  const isLight = theme === 'light'
   const [aspectRatio, setAspectRatio] = useState<string>('16:9')
   const [resolution, setResolution] = useState<string>('1K')
   const [outputFormat, setOutputFormat] = useState<string>('jpg')
@@ -68,12 +59,13 @@ export function ImageStudioGenerateDialog({
   const [refUrls, setRefUrls] = useState<string[]>([])
   const [refsLoading, setRefsLoading] = useState(true)
 
-  const expectsRefs = colorUsesPanelTextureRefs(selectedColor)
+  const refSkuKey = selectedColors.map((c) => c.sku).join('|')
+  const expectsRefs = anyColorUsesPanelTextureRefs(selectedColors)
 
   useEffect(() => {
     let cancelled = false
     setRefsLoading(true)
-    buildPaletteReferenceDataUrls(selectedColor).then((urls) => {
+    buildPaletteReferenceDataUrlsMulti(selectedColors).then((urls) => {
       if (!cancelled) {
         setRefUrls(urls)
         setRefsLoading(false)
@@ -82,7 +74,7 @@ export function ImageStudioGenerateDialog({
     return () => {
       cancelled = true
     }
-  }, [selectedColor])
+  }, [refSkuKey])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -132,7 +124,7 @@ export function ImageStudioGenerateDialog({
         position: 'fixed',
         inset: 0,
         zIndex: 1000,
-        background: 'rgba(0,0,0,0.55)',
+        background: panel.overlay,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -143,12 +135,12 @@ export function ImageStudioGenerateDialog({
     >
       <div
         style={{
-          background: panel.bg,
+          background: panel.panelBg,
           borderRadius: 16,
-          border: `1px solid ${panel.border}`,
+          border: `1px solid ${panel.panelBorder}`,
           maxWidth: 560,
           width: '100%',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.55)',
+          boxShadow: panel.panelShadow,
           overflow: 'hidden',
           maxHeight: 'min(92vh, 900px)',
           display: 'flex',
@@ -156,9 +148,12 @@ export function ImageStudioGenerateDialog({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${panel.border}`, flexShrink: 0 }}>
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${panel.panelBorder}`, flexShrink: 0 }}>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: panel.text }}>
-            Generate façade · {selectedColor.name}
+            Generate façade ·{' '}
+            {selectedColors.length === 1
+              ? selectedColors[0].name
+              : `${selectedColors.length} finishes (${selectedColors.map((c) => c.name).join(', ')})`}
           </h3>
           <p style={{ margin: '10px 0 0', fontSize: 12, color: panel.muted, lineHeight: 1.55 }}>
             Uses{' '}
@@ -188,7 +183,7 @@ export function ImageStudioGenerateDialog({
                 overflow: 'hidden',
                 border: `1px solid ${panel.fieldBorder}`,
                 maxHeight: 160,
-                background: '#111',
+                background: isLight ? '#e8ecf4' : '#111',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -206,8 +201,11 @@ export function ImageStudioGenerateDialog({
             <div style={{ ...labelStyle, marginBottom: 8 }}>Palette</div>
             {!expectsRefs ? (
               <p style={{ margin: 0, fontSize: 12, color: panel.muted, lineHeight: 1.55 }}>
-                <strong style={{ color: panel.text }}>Solid / uniform finish</strong> — the capture is still your workspace
-                preview (photo only); colour, name, SKU, and finish are in the text prompt.
+                <strong style={{ color: panel.text }}>
+                  {selectedColors.length > 1 ? 'Solid / multi-colour finishes' : 'Solid / uniform finish'}
+                </strong>{' '}
+                — the capture is still your workspace preview (photo only); all chosen colours (name, SKU, hex, finish)
+                are in the text prompt.
               </p>
             ) : refsLoading ? (
               <p style={{ margin: 0, fontSize: 12, color: panel.muted }}>Loading panel textures…</p>
@@ -291,7 +289,7 @@ export function ImageStudioGenerateDialog({
         <div
           style={{
             padding: '16px 24px',
-            borderTop: `1px solid ${panel.border}`,
+            borderTop: `1px solid ${panel.panelBorder}`,
             display: 'flex',
             justifyContent: 'flex-end',
             gap: 10,
