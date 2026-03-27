@@ -1,7 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { brand } from '../theme'
 
-const LANDING_PREVIEW_VIDEO = '/videos/preview.mp4'
+/** Respects Vite `base` when the app is hosted under a subpath */
+const LANDING_PREVIEW_VIDEO = `${import.meta.env.BASE_URL}videos/preview.mp4`
+
+const LANDING_VIDEO_PLACEHOLDER_BG =
+  'linear-gradient(165deg, #14141a 0%, #1a1814 38%, #0c0c10 72%, #08080a 100%)'
+
+const POST_VIDEO_FADE_MS = 1400
+const POST_VIDEO_EASE = 'cubic-bezier(0.45, 0.05, 0.55, 0.95)'
 
 export type AppMode = 'landing' | 'studio' | 'ifc' | 'image'
 
@@ -69,15 +76,42 @@ const CARDS: {
 export function LandingPage({ onSelectMode }: LandingPageProps) {
   const [phase, setPhase] = useState<IntroPhase>('idle')
   const [hoveredCard, setHoveredCard] = useState<AppMode | null>(null)
+  const [videoReady, setVideoReady] = useState(false)
+  const [videoFinishedToBlack, setVideoFinishedToBlack] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
     v.muted = true
-    void v.play().catch(() => {
-      /* autoplay policies — stays paused until user gesture elsewhere */
+    v.defaultMuted = true
+    v.playsInline = true
+    v.preload = 'auto'
+
+    let revealed = false
+    const showAndPlay = () => {
+      if (revealed) return
+      revealed = true
+      setVideoReady(true)
+      void v.play().catch(() => {
+        /* autoplay policies — first frame still visible after loadeddata */
+      })
+    }
+
+    const onEnded = () => setVideoFinishedToBlack(true)
+
+    v.addEventListener('loadeddata', showAndPlay)
+    v.addEventListener('ended', onEnded)
+    v.load()
+
+    queueMicrotask(() => {
+      if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) showAndPlay()
     })
+
+    return () => {
+      v.removeEventListener('loadeddata', showAndPlay)
+      v.removeEventListener('ended', onEnded)
+    }
   }, [])
 
   useEffect(() => {
@@ -106,8 +140,8 @@ export function LandingPage({ onSelectMode }: LandingPageProps) {
         display: 'flex',
         flexDirection: 'column',
         overflow: 'auto',
-        background: '#000000',
-        color: '#fafafa',
+        background: videoFinishedToBlack ? '#000000' : '#08080a',
+        transition: `background-color ${POST_VIDEO_FADE_MS}ms ${POST_VIDEO_EASE}`,
       }}
     >
       <div
@@ -118,7 +152,7 @@ export function LandingPage({ onSelectMode }: LandingPageProps) {
           zIndex: 0,
           overflow: 'hidden',
           pointerEvents: 'none',
-          background: '#000',
+          background: LANDING_VIDEO_PLACEHOLDER_BG,
         }}
       >
         <video
@@ -134,6 +168,8 @@ export function LandingPage({ onSelectMode }: LandingPageProps) {
             width: '100%',
             height: '100%',
             objectFit: 'cover',
+            opacity: videoReady ? 1 : 0,
+            transition: 'opacity 0.55s ease',
           }}
         />
         <div
@@ -142,6 +178,15 @@ export function LandingPage({ onSelectMode }: LandingPageProps) {
             inset: 0,
             background:
               'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.72) 100%)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: '#000000',
+            opacity: videoFinishedToBlack ? 1 : 0,
+            transition: `opacity ${POST_VIDEO_FADE_MS}ms ${POST_VIDEO_EASE}`,
           }}
         />
       </div>
