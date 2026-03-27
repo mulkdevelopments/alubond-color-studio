@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { brand } from '../theme'
+
+const LANDING_PREVIEW_VIDEO = '/videos/preview.mp4'
 
 export type AppMode = 'landing' | 'studio' | 'ifc' | 'image'
 
@@ -67,6 +69,16 @@ const CARDS: {
 export function LandingPage({ onSelectMode }: LandingPageProps) {
   const [phase, setPhase] = useState<IntroPhase>('idle')
   const [hoveredCard, setHoveredCard] = useState<AppMode | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    v.muted = true
+    void v.play().catch(() => {
+      /* autoplay policies — stays paused until user gesture elsewhere */
+    })
+  }, [])
 
   useEffect(() => {
     const t0 = window.setTimeout(() => setPhase('alubond'), 120)
@@ -98,8 +110,46 @@ export function LandingPage({ onSelectMode }: LandingPageProps) {
         color: '#fafafa',
       }}
     >
+      <div
+        aria-hidden
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 0,
+          overflow: 'hidden',
+          pointerEvents: 'none',
+          background: '#000',
+        }}
+      >
+        <video
+          ref={videoRef}
+          src={LANDING_PREVIEW_VIDEO}
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.72) 100%)',
+          }}
+        />
+      </div>
+
       <main
         style={{
+          position: 'relative',
+          zIndex: 1,
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
@@ -290,6 +340,8 @@ export function LandingPage({ onSelectMode }: LandingPageProps) {
 
       <footer
         style={{
+          position: 'relative',
+          zIndex: 1,
           padding: '20px 24px 28px',
           textAlign: 'center',
           fontSize: 11,
