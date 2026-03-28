@@ -20,7 +20,7 @@ import {
   buildFacadeReferenceImageSuffix,
 } from './utils/imageFacadePrompt'
 import { captureWorkspacePreviewToDataUrl } from './utils/captureWorkspacePreview'
-import { anyColorUsesPanelTextureRefs } from './utils/paletteReferenceImages'
+import { anyColorUsesPanelTextureRefs, buildPaletteReferenceDataUrlsMulti } from './utils/paletteReferenceImages'
 import { downloadSnapshot, generateSpecPdf } from './utils/export'
 
 const IFCViewerLazy = lazy(() => import('./components/IFCViewer').then((m) => ({ default: m.IFCViewer })))
@@ -278,6 +278,10 @@ export default function App() {
   const [ifcMeshCount, setIfcMeshCount] = useState(0)
   const ifcOrderedPanelsRef = useRef<PanelMaterialSlot[]>([])
 
+  const removePaletteColorBySku = useCallback((sku: string) => {
+    setSelectedColors((prev) => prev.filter((c) => c.sku !== sku))
+  }, [])
+
   const togglePaletteColor = useCallback(
     (c: AlubondColor) => {
       setSelectedColors((prev) => {
@@ -474,6 +478,11 @@ export default function App() {
     applyColorsToPanels(facadePanelsRef.current, selectedColors, facadeSettings.paletteLayout)
   }, [selectedColors, applyColorsToPanels, facadeSettings.paletteLayout])
 
+  const handleClearAllPalettes = useCallback(() => {
+    setSelectedColors([])
+    setFacadePaintState({ colorOverrides: new Map(), undoStack: [], redoStack: [] })
+  }, [])
+
   /** Stable callback so FacadeBuilding’s panel effect doesn’t re-run on every colour change (avoids races with texture apply). */
   const handlePanelsReady = useCallback(
     (panels: PanelMaterialSlot[]) => {
@@ -609,7 +618,16 @@ export default function App() {
         if (ui.customPrompt.trim()) {
           prompt += ` Additional creative direction: ${ui.customPrompt.trim()}`
         }
-        /** References are already embedded in the workspace JPEG capture (photo + ref strip). */
+        /** Full-size panel JPEGs as a second (merged) image — the on-screen ref strip is too small in the capture alone. */
+        let paletteReferenceDataUrls: string[] | undefined
+        if (hasTextureRefs) {
+          try {
+            const urls = await buildPaletteReferenceDataUrlsMulti(selectedColors)
+            if (urls.length > 0) paletteReferenceDataUrls = urls
+          } catch {
+            /* main workspace capture still includes the strip when visible */
+          }
+        }
         const nanoOpts: NanobananaGenerateOptions = {
           aspectRatio: ui.aspectRatio,
           resolution: ui.resolution,
@@ -617,23 +635,40 @@ export default function App() {
           googleSearch: ui.googleSearch,
           maxSendDimension: 768,
           imageStudioMode: true,
+          paletteReferenceDataUrls,
         }
-        const run = (p: string) => enhanceImageWithNanobanana(imageForApi, p, nanoOpts)
+        const nanoOptsMainOnly: NanobananaGenerateOptions = {
+          ...nanoOpts,
+          paletteReferenceDataUrls: undefined,
+        }
+        const runNano = (p: string, opts: NanobananaGenerateOptions) =>
+          enhanceImageWithNanobanana(imageForApi, p, opts)
         const extra = ui.customPrompt.trim()
           ? ` Additional creative direction: ${ui.customPrompt.trim()}`
           : ''
+        const retryableNano = (msg: string) =>
+          /server exception|try again later|contact customer service|\b500\b|404|no taskId|no image URL|Result image|Timed out/i.test(
+            msg
+          )
         try {
-          setResultImage(await run(prompt))
+          setResultImage(await runNano(prompt, nanoOpts))
         } catch (e) {
           const msg = e instanceof Error ? e.message : ''
-          if (
-            /server exception|try again later|contact customer service|404|no taskId|no image URL|Result image|Timed out/i.test(
-              msg
-            )
-          ) {
-            setResultImage(await run(buildFacadePromptMinimalMulti(selectedColors) + refSuffix + extra))
+          if (!retryableNano(msg)) throw e
+          if (paletteReferenceDataUrls?.length) {
+            try {
+              setResultImage(await runNano(prompt, nanoOptsMainOnly))
+            } catch (e2) {
+              const m2 = e2 instanceof Error ? e2.message : ''
+              if (!retryableNano(m2)) throw e2
+              setResultImage(
+                await runNano(buildFacadePromptMinimalMulti(selectedColors) + refSuffix + extra, nanoOptsMainOnly)
+              )
+            }
           } else {
-            throw e
+            setResultImage(
+              await runNano(buildFacadePromptMinimalMulti(selectedColors) + refSuffix + extra, nanoOptsMainOnly)
+            )
           }
         }
       } catch (e) {
@@ -807,7 +842,7 @@ export default function App() {
             settings={facadeSettings}
             onChange={setFacadeSettings}
             selectedColors={selectedColors}
-            onApplyAll={handleApplyAllPanels}
+            onClearAllPalettes={handleClearAllPalettes}
             layout="vertical"
           />
         ) : undefined
@@ -923,6 +958,7 @@ export default function App() {
             isProcessing={imageProcessing}
             selectedColors={selectedColors}
             previewCaptureRef={imageStudioPreviewRef}
+            onRemovePaletteColorBySku={removePaletteColorBySku}
           />
         )}
       </div>

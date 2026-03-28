@@ -115,6 +115,9 @@ export function anyColorUsesPanelTextureRefs(colors: AlubondColor[]): boolean {
   return colors.some((c) => colorUsesPanelTextureRefs(c))
 }
 
+/** One reference thumbnail in the Image Studio strip, tied to a library colour for remove actions. */
+export type PaletteRefItem = { url: string; sku: string; name: string }
+
 /**
  * Merged panel reference JPEGs for several library colours (deduped, order preserved, capped).
  */
@@ -127,6 +130,25 @@ export async function buildPaletteReferenceDataUrlsMulti(colors: AlubondColor[])
       if (seen.has(u)) continue
       seen.add(u)
       out.push(u)
+      if (out.length >= MAX_PALETTE_REFS) return out
+    }
+  }
+  return out
+}
+
+/**
+ * Reference thumbnails for Image Studio sidebar: one row per texture, tagged with owning colour (no cross-colour URL dedupe so each tile can remove the right palette entry).
+ * Colours with no loadable panel PNG still get a hex swatch so the strip always reflects the selection.
+ */
+export async function buildPaletteReferenceItemsMulti(colors: AlubondColor[]): Promise<PaletteRefItem[]> {
+  const out: PaletteRefItem[] = []
+  for (const color of colors) {
+    let batch = await buildPaletteReferenceDataUrls(color)
+    if (batch.length === 0) {
+      batch = [hexSwatchDataUrl(color.hex)]
+    }
+    for (const u of batch) {
+      out.push({ url: u, sku: color.sku, name: color.name })
       if (out.length >= MAX_PALETTE_REFS) return out
     }
   }

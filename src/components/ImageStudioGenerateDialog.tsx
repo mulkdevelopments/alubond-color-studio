@@ -160,8 +160,10 @@ export function ImageStudioGenerateDialog({
             <a href="https://docs.nanobananaapi.ai/" target="_blank" rel="noopener noreferrer" style={{ color: brand.orange }}>
               NanoBanana
             </a>
-            . We send <strong style={{ color: panel.text }}>one JPEG</strong>: a capture of the centre workspace preview (your
-            photo plus the reference strip when shown)—exactly what you see there, not a separate multi-image API payload.
+            . We send a <strong style={{ color: panel.text }}>workspace JPEG</strong> (your photo plus the on-screen reference
+            strip when shown). When finishes use Alubond panel textures, we also send a{' '}
+            <strong style={{ color: panel.text }}>separate reference sheet</strong> built from the same panel image files so
+            the model sees the exact cladding clearly (the strip in the preview is too small on its own after compression).
           </p>
         </div>
 
@@ -216,7 +218,8 @@ export function ImageStudioGenerateDialog({
             ) : (
               <>
                 <p style={{ margin: '0 0 10px', fontSize: 11, color: panel.muted, lineHeight: 1.45 }}>
-                  Wait until these load so they appear in the centre preview before you generate (that frame is what we capture).
+                  Wait until these load for an accurate preview. Generation also attaches a high-res sheet from these same
+                  panel files to the API—not only the small strip in the capture.
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                   {refUrls.map((url, i) => (

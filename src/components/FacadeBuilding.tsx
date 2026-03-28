@@ -833,6 +833,20 @@ export function FacadeBuilding({
         } else {
           mat.envMapIntensity = 1
         }
+      } else {
+        if (mat.map != null) {
+          mat.map = null
+          mat.needsUpdate = true
+        }
+        mat.color.setHex(DEFAULT_PANEL_COLOR)
+        mat.metalness = 0.85
+        mat.roughness = 0.35
+        if (envMap) {
+          mat.envMap = envMap
+          mat.envMapIntensity = METALLIC_ENV_INTENSITY
+        } else {
+          mat.envMapIntensity = 1
+        }
       }
       const cellGroupKey = (mesh.userData as { cellGroupKey?: string }).cellGroupKey
       const hoverGlow =

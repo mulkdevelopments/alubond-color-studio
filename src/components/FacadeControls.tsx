@@ -130,7 +130,7 @@ interface FacadeControlsProps {
   settings: FacadeSettings
   onChange: (settings: FacadeSettings) => void
   selectedColors?: AlubondColor[]
-  onApplyAll?: () => void
+  onClearAllPalettes?: () => void
   /** 'horizontal' = bar layout; 'vertical' = stacked in left panel */
   layout?: 'horizontal' | 'vertical'
 }
@@ -147,11 +147,12 @@ export function FacadeControls({
   settings,
   onChange,
   selectedColors = [],
-  onApplyAll,
+  onClearAllPalettes,
   layout = 'horizontal',
 }: FacadeControlsProps) {
   const t = getThemeTokens(theme)
   const isVertical = layout === 'vertical'
+  const handleClearAllPalettes = onClearAllPalettes
 
   useEffect(() => {
     if (!VISIBLE_TYPOLOGIES.includes(settings.typology)) {
@@ -392,22 +393,22 @@ export function FacadeControls({
               </span>
               <button
                 type="button"
-                onClick={onApplyAll}
+                onClick={() => handleClearAllPalettes?.()}
                 style={{
-                  padding: '6px 16px',
+                  padding: '6px 14px',
                   fontSize: 11,
                   fontWeight: 700,
-                  background: `linear-gradient(135deg, ${brand.orangeHover}, ${brand.orange})`,
-                  border: '1px solid rgba(255,255,255,0.22)',
+                  background: t.buttonBg,
+                  border: `1px solid ${t.buttonBorder}`,
                   borderRadius: 999,
-                  color: '#fff',
+                  color: t.text,
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                   transition: 'all 0.2s ease',
-                  boxShadow: '0 4px 16px rgba(232,119,34,0.35), inset 0 1px 0 rgba(255,255,255,0.2)',
+                  boxShadow: `inset 0 1px 0 ${theme === 'light' ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.06)'}`,
                 }}
               >
-                Apply All
+                Clear all palettes
               </button>
             </>
           ) : (

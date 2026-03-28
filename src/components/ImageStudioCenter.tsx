@@ -1,10 +1,7 @@
 import { useEffect, useState, type CSSProperties, type Ref } from 'react'
 import { getThemeTokens, brand, glassChrome, type Theme } from '../theme'
 import type { AlubondColor } from '../types'
-import {
-  anyColorUsesPanelTextureRefs,
-  buildPaletteReferenceDataUrlsMulti,
-} from '../utils/paletteReferenceImages'
+import { buildPaletteReferenceItemsMulti, type PaletteRefItem } from '../utils/paletteReferenceImages'
 
 /** Image preview fills space between header and bottom film dock; keeps aspect ratio (no squashing). */
 export function ImageStudioCenter({
@@ -14,6 +11,7 @@ export function ImageStudioCenter({
   isProcessing,
   selectedColors,
   previewCaptureRef,
+  onRemovePaletteColorBySku,
 }: {
   theme: Theme
   uploadedImage: string | null
@@ -22,29 +20,38 @@ export function ImageStudioCenter({
   selectedColors: AlubondColor[]
   /** Set on the bordered preview (photo + refs) for NanoBanana — exact pixels you see. */
   previewCaptureRef?: Ref<HTMLDivElement>
+  /** Remove one library finish from the selection (reference strip). */
+  onRemovePaletteColorBySku?: (sku: string) => void
 }) {
   const t = getThemeTokens(theme)
-  const [paletteRefUrls, setPaletteRefUrls] = useState<string[]>([])
+  const [paletteRefItems, setPaletteRefItems] = useState<PaletteRefItem[]>([])
   const [refsLoading, setRefsLoading] = useState(false)
 
   const refSkuKey = selectedColors.map((c) => c.sku).join('|')
-  const showPaletteSidebar =
-    !!uploadedImage && selectedColors.length > 0 && anyColorUsesPanelTextureRefs(selectedColors)
+  /** Right-hand strip: any time there is a photo and a non-empty palette (panel PNGs and/or hex swatches). */
+  const showRefStrip = !!uploadedImage && selectedColors.length > 0
 
   useEffect(() => {
-    if (!uploadedImage || selectedColors.length === 0 || !anyColorUsesPanelTextureRefs(selectedColors)) {
-      setPaletteRefUrls([])
+    if (!uploadedImage || selectedColors.length === 0) {
+      setPaletteRefItems([])
       setRefsLoading(false)
       return
     }
     let cancelled = false
     setRefsLoading(true)
-    buildPaletteReferenceDataUrlsMulti(selectedColors).then((urls) => {
-      if (!cancelled) {
-        setPaletteRefUrls(urls)
-        setRefsLoading(false)
-      }
-    })
+    buildPaletteReferenceItemsMulti(selectedColors)
+      .then((items) => {
+        if (!cancelled) {
+          setPaletteRefItems(items)
+          setRefsLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPaletteRefItems([])
+          setRefsLoading(false)
+        }
+      })
     return () => {
       cancelled = true
     }
@@ -99,8 +106,7 @@ export function ImageStudioCenter({
   }
 
   const sidebarW = 108
-  const paletteSidebar =
-    showPaletteSidebar && (paletteRefUrls.length > 0 || refsLoading) ? (
+  const paletteSidebar = showRefStrip ? (
       <div
         style={{
           width: sidebarW,
@@ -140,10 +146,12 @@ export function ImageStudioCenter({
         >
           {refsLoading ? (
             <p style={{ margin: 0, fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>Loading…</p>
+          ) : paletteRefItems.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>No previews</p>
           ) : (
-            paletteRefUrls.map((url, i) => (
+            paletteRefItems.map((item, i) => (
               <div
-                key={`${i}-${url.slice(0, 30)}`}
+                key={`${item.sku}-${i}-${item.url.slice(0, 24)}`}
                 style={{
                   flex: '0 0 auto',
                   borderRadius: 8,
@@ -152,13 +160,53 @@ export function ImageStudioCenter({
                   background: '#222',
                   aspectRatio: '1',
                   maxHeight: 88,
+                  position: 'relative',
                 }}
               >
                 <img
-                  src={url}
-                  alt={`Finish ${i + 1}`}
+                  src={item.url}
+                  alt={`${item.name} reference`}
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
+                {onRemovePaletteColorBySku ? (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${item.name} from palette`}
+                    title="Remove from palette"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onRemovePaletteColorBySku(item.sku)
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: 3,
+                      right: 3,
+                      width: 20,
+                      height: 20,
+                      padding: 0,
+                      margin: 0,
+                      border: 'none',
+                      borderRadius: 999,
+                      background: 'rgba(0,0,0,0.55)',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      lineHeight: 0,
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
+                    }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
+                      <path
+                        d="M3 3l6 6M9 3L3 9"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                ) : null}
               </div>
             ))
           )}
@@ -212,7 +260,7 @@ export function ImageStudioCenter({
             }}
           >
             <div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, letterSpacing: '0.06em', flexShrink: 0 }}>
-              ORIGINAL{showPaletteSidebar ? ' + REFERENCES' : ''}
+              ORIGINAL{showRefStrip ? ' + REFERENCES' : ''}
             </div>
             <div
               ref={previewCaptureRef}

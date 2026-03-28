@@ -104,8 +104,9 @@ export function buildFacadePromptMinimalMulti(colors: AlubondColor[]): string {
 export function buildFacadeReferenceImageSuffix(hasTexturePanelReferences: boolean): string {
   if (!hasTexturePanelReferences) return ''
   return (
-    ' INPUT: One image with the real building on the left and a narrow Alubond reference strip on the right (sample panels; may show small labels). ' +
-    'Use that strip ONLY as material reference for colour, gloss, grain, and patina. It is NOT part of the site or architecture. ' +
+    ' INPUT: (1) Main image: the real building with a narrow Alubond reference strip on the right when present. ' +
+    '(2) Additional image(s): enlarged sheet(s) of the exact same Alubond panel texture files—use these as the primary guide for colour, gloss, grain, and patina. ' +
+    'Reference imagery is NOT part of the site or architecture. ' +
     ' OUTPUT (CRITICAL): Produce a single final photograph or render that shows ONLY the building with cladding applied. ' +
     'Do NOT include the reference strip, swatches, sample tiles, or any "refs" / "Alubond refs" text in the output. ' +
     'Crop mentally to the building: the result must look like a normal professional façade photo—same building, full bleed, no sidebar. ' +

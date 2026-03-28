@@ -79,14 +79,18 @@ export function LibraryFilmBottomDock({
         })}
       </div>
 
-      {libraryTab === 'Fusion' ? (
+      {/* Keep mounted so AI-generated fusion suggestions survive tab switches (state lives in the panel). */}
+      <div
+        style={{ display: libraryTab === 'Fusion' ? 'block' : 'none' }}
+        aria-hidden={libraryTab !== 'Fusion'}
+      >
         <FusionAiPanel
           variant="dock"
           theme={theme}
           selectedColors={selectedColors}
           onTogglePaletteColor={onTogglePaletteColor}
         />
-      ) : null}
+      </div>
 
       <FilmStripColorRail
         variant="bottomBar"

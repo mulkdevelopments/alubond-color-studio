@@ -215,12 +215,17 @@ export function PalettePanel({
           WebkitOverflowScrolling: 'touch',
         }}
       >
-      {activeTab === 'Fusion' && !hideLibraryTabs ? (
-        <FusionAiPanel
-          theme={theme}
-          selectedColors={selectedColors}
-          onTogglePaletteColor={onTogglePaletteColor}
-        />
+      {!hideLibraryTabs ? (
+        <div
+          style={{ display: activeTab === 'Fusion' ? 'block' : 'none' }}
+          aria-hidden={activeTab !== 'Fusion'}
+        >
+          <FusionAiPanel
+            theme={theme}
+            selectedColors={selectedColors}
+            onTogglePaletteColor={onTogglePaletteColor}
+          />
+        </div>
       ) : null}
       </div>
 
