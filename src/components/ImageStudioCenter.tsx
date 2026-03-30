@@ -10,7 +10,7 @@ export function ImageStudioCenter({
   resultImage,
   isProcessing,
   selectedColors,
-  previewCaptureRef,
+  mainCaptureRef,
   onRemovePaletteColorBySku,
 }: {
   theme: Theme
@@ -18,8 +18,8 @@ export function ImageStudioCenter({
   resultImage: string | null
   isProcessing: boolean
   selectedColors: AlubondColor[]
-  /** Set on the bordered preview (photo + refs) for NanoBanana — exact pixels you see. */
-  previewCaptureRef?: Ref<HTMLDivElement>
+  /** Building-only panel (excludes right ref strip) — snapshot for NanoBanana like a canvas capture. */
+  mainCaptureRef?: Ref<HTMLDivElement>
   /** Remove one library finish from the selection (reference strip). */
   onRemovePaletteColorBySku?: (sku: string) => void
 }) {
@@ -220,7 +220,7 @@ export function ImageStudioCenter({
             lineHeight: 1.35,
           }}
         >
-          Sent as one image with your photo
+          Preview only — generate uses a JPEG snapshot of the building view + merged panel refs
         </p>
       </div>
     ) : null
@@ -263,7 +263,6 @@ export function ImageStudioCenter({
               ORIGINAL{showRefStrip ? ' + REFERENCES' : ''}
             </div>
             <div
-              ref={previewCaptureRef}
               style={{
                 flex: 1,
                 minHeight: 0,
@@ -277,6 +276,7 @@ export function ImageStudioCenter({
               }}
             >
               <div
+                ref={mainCaptureRef}
                 style={{
                   flex: 1,
                   minWidth: 0,

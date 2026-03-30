@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, type CSSProperties } from 'react'
 import type { AlubondColor, PanelTextureRef } from '../types'
 import type { Theme } from '../theme'
 import { getThemeTokens, brand } from '../theme'
@@ -74,6 +74,7 @@ export function FusionAiPanel({
   const [fusionParticipants, setFusionParticipants] = useState<string[]>(() => [
     ...getPanelTextureFolderList(),
   ])
+  const [sectionOpen, setSectionOpen] = useState(true)
 
   const toggleFusionParticipant = useCallback((folder: string) => {
     setFusionParticipants((prev) =>
@@ -136,6 +137,22 @@ export function FusionAiPanel({
     typeof import.meta.env.VITE_OPENAI_API_KEY === 'string' &&
     import.meta.env.VITE_OPENAI_API_KEY.trim().length > 0
 
+  const headerBtn: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 28,
+    padding: 0,
+    flexShrink: 0,
+    borderRadius: 8,
+    border: `1px solid ${borderColor}`,
+    background: cardBg,
+    color: t.textMuted,
+    cursor: 'pointer',
+    transition: 'background 0.15s ease, color 0.15s ease',
+  }
+
   return (
     <div
       style={{
@@ -144,6 +161,63 @@ export function FusionAiPanel({
         marginBottom: dock ? 4 : undefined,
       }}
     >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          marginBottom: sectionOpen ? 12 : 0,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: t.textMuted,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}
+          >
+            Fusion AI
+          </span>
+          {!sectionOpen && fusionSuggestions.length > 0 ? (
+            <span style={{ fontSize: 10, fontWeight: 600, color: brand.orange }}>
+              {fusionSuggestions.length} suggestion{fusionSuggestions.length === 1 ? '' : 's'}
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          aria-expanded={sectionOpen}
+          aria-label={sectionOpen ? 'Collapse Fusion AI' : 'Expand Fusion AI'}
+          title={sectionOpen ? 'Collapse' : 'Expand'}
+          onClick={() => setSectionOpen((v) => !v)}
+          style={headerBtn}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{
+              transform: sectionOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+              transition: 'transform 0.2s ease',
+            }}
+            aria-hidden
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      </div>
+
+      {sectionOpen ? (
+        <>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
         {PALETTES_PER_FUSION_CHOICES.map((n) => {
           const active = fusionPalettesPerFusion === n
@@ -320,6 +394,8 @@ export function FusionAiPanel({
           })}
         </div>
       )}
+        </>
+      ) : null}
     </div>
   )
 }

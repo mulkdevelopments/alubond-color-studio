@@ -15,12 +15,12 @@ import {
   type ImageStudioGenerateUiOptions,
 } from './components/ImageStudioGenerateDialog'
 import {
-  buildFacadePromptMulti,
   buildFacadePromptMinimalMulti,
   buildFacadeReferenceImageSuffix,
+  buildImageStudioFacadePrompt,
 } from './utils/imageFacadePrompt'
+import { buildPaletteTextureDataUrlsForNano } from './utils/paletteReferenceImages'
 import { captureWorkspacePreviewToDataUrl } from './utils/captureWorkspacePreview'
-import { anyColorUsesPanelTextureRefs, buildPaletteReferenceDataUrlsMulti } from './utils/paletteReferenceImages'
 import { downloadSnapshot, generateSpecPdf } from './utils/export'
 
 const IFCViewerLazy = lazy(() => import('./components/IFCViewer').then((m) => ({ default: m.IFCViewer })))
@@ -32,7 +32,12 @@ import {
   paletteColorIndexForSlot,
   type PanelMaterialSlot,
 } from './utils/panelMaterialBulkApply'
-import { enhanceImageWithNanobanana, DEFAULT_PROMPT, type NanobananaGenerateOptions } from './utils/nanobananaEnhance'
+import {
+  enhanceImageWithNanobanana,
+  DEFAULT_PROMPT,
+  getNearestAspectRatioFromDataUrl,
+  type NanobananaGenerateOptions,
+} from './utils/nanobananaEnhance'
 import { brand, workspace, getStudioModalChrome, type Theme, type WorkspaceAppearance } from './theme'
 import type { MaterialState, AlubondColor, PaletteStyle } from './types'
 
@@ -253,7 +258,7 @@ export default function App() {
   const selectionToolEnabled = false
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
   const [showImageGenerateDialog, setShowImageGenerateDialog] = useState(false)
-  const imageStudioPreviewRef = useRef<HTMLDivElement>(null)
+  const imageStudioMainCaptureRef = useRef<HTMLDivElement>(null)
   const [facadePaintState, setFacadePaintState] = useState<{
     colorOverrides: Map<string, MaterialState>
     undoStack: PaintAction[]
@@ -593,48 +598,59 @@ export default function App() {
     async (ui: ImageStudioGenerateUiOptions) => {
       if (!uploadedImage || selectedColors.length === 0) return
 
-      let imageForApi: string
-      try {
-        const el = imageStudioPreviewRef.current
-        if (!el) {
-          setImageError('Workspace preview is not ready. Wait for the image to appear, then try again.')
-          return
-        }
-        imageForApi = await captureWorkspacePreviewToDataUrl(el)
-      } catch (e) {
-        setImageError(
-          e instanceof Error ? e.message : 'Could not capture the workspace preview. Try a smaller window or reload.'
-        )
-        return
-      }
-
       setShowImageGenerateDialog(false)
       setImageProcessing(true)
       setImageError(null)
       try {
-        const hasTextureRefs = anyColorUsesPanelTextureRefs(selectedColors)
-        const refSuffix = buildFacadeReferenceImageSuffix(hasTextureRefs)
-        let prompt = buildFacadePromptMulti(selectedColors) + refSuffix
-        if (ui.customPrompt.trim()) {
-          prompt += ` Additional creative direction: ${ui.customPrompt.trim()}`
-        }
-        /** Full-size panel JPEGs as a second (merged) image — the on-screen ref strip is too small in the capture alone. */
-        let paletteReferenceDataUrls: string[] | undefined
-        if (hasTextureRefs) {
+        /** Rasterize the on-screen building panel (like a canvas snapshot) — smaller than a huge camera upload. */
+        let imageForApi = uploadedImage
+        const capEl = imageStudioMainCaptureRef.current
+        if (capEl) {
           try {
-            const urls = await buildPaletteReferenceDataUrlsMulti(selectedColors)
-            if (urls.length > 0) paletteReferenceDataUrls = urls
+            await new Promise<void>((resolve) => {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => resolve())
+              })
+            })
+            imageForApi = await captureWorkspacePreviewToDataUrl(capEl)
+          } catch (snapErr) {
+            console.warn('[Image Studio] Preview snapshot failed, using original upload', snapErr)
+            imageForApi = uploadedImage
+          }
+        }
+
+        let panelTextureUrls: string[] = []
+        try {
+          panelTextureUrls = await buildPaletteTextureDataUrlsForNano(selectedColors)
+        } catch {
+          panelTextureUrls = []
+        }
+        const refSuffix = buildFacadeReferenceImageSuffix(panelTextureUrls.length)
+        const refSuffixNoRefs = buildFacadeReferenceImageSuffix(0)
+        const creative = ui.customPrompt.trim()
+          ? ` Additional creative direction: ${ui.customPrompt.trim()}`
+          : ''
+        const prompt = buildImageStudioFacadePrompt(selectedColors) + refSuffix + creative
+        const promptMainOnly = buildImageStudioFacadePrompt(selectedColors) + refSuffixNoRefs + creative
+        const paletteReferenceDataUrls = panelTextureUrls.length > 0 ? panelTextureUrls : undefined
+        /** Match Facade Maker / IFC NanoBanana path: single generate-2 body, merged ref strip (not 14-way + auto ladder). */
+        let aspectForNano = ui.aspectRatio
+        if (aspectForNano === 'auto') {
+          try {
+            aspectForNano = await getNearestAspectRatioFromDataUrl(imageForApi)
           } catch {
-            /* main workspace capture still includes the strip when visible */
+            aspectForNano = '4:3'
           }
         }
         const nanoOpts: NanobananaGenerateOptions = {
-          aspectRatio: ui.aspectRatio,
+          aspectRatio: aspectForNano,
           resolution: ui.resolution,
           outputFormat: ui.outputFormat,
           googleSearch: ui.googleSearch,
-          maxSendDimension: 768,
-          imageStudioMode: true,
+          maxSendDimension: 1024,
+          imageStudioMode: false,
+          sendIndividualPaletteRefs: false,
+          maxPaletteReferences: 8,
           paletteReferenceDataUrls,
         }
         const nanoOptsMainOnly: NanobananaGenerateOptions = {
@@ -643,9 +659,7 @@ export default function App() {
         }
         const runNano = (p: string, opts: NanobananaGenerateOptions) =>
           enhanceImageWithNanobanana(imageForApi, p, opts)
-        const extra = ui.customPrompt.trim()
-          ? ` Additional creative direction: ${ui.customPrompt.trim()}`
-          : ''
+        const extra = creative
         const retryableNano = (msg: string) =>
           /server exception|try again later|contact customer service|\b500\b|404|no taskId|no image URL|Result image|Timed out/i.test(
             msg
@@ -654,25 +668,42 @@ export default function App() {
           setResultImage(await runNano(prompt, nanoOpts))
         } catch (e) {
           const msg = e instanceof Error ? e.message : ''
+          console.warn('[Image Studio] primary NanoBanana call failed', {
+            message: msg,
+            paletteRefCount: paletteReferenceDataUrls?.length ?? 0,
+            stack: e instanceof Error ? e.stack : undefined,
+          })
           if (!retryableNano(msg)) throw e
           if (paletteReferenceDataUrls?.length) {
             try {
-              setResultImage(await runNano(prompt, nanoOptsMainOnly))
+              console.info('[Image Studio] retry without palette reference images')
+              setResultImage(await runNano(promptMainOnly, nanoOptsMainOnly))
             } catch (e2) {
               const m2 = e2 instanceof Error ? e2.message : ''
+              console.warn('[Image Studio] retry without refs failed; trying minimal prompt', {
+                message: m2,
+                stack: e2 instanceof Error ? e2.stack : undefined,
+              })
               if (!retryableNano(m2)) throw e2
               setResultImage(
-                await runNano(buildFacadePromptMinimalMulti(selectedColors) + refSuffix + extra, nanoOptsMainOnly)
+                await runNano(buildFacadePromptMinimalMulti(selectedColors) + refSuffixNoRefs + extra, nanoOptsMainOnly)
               )
             }
           } else {
+            console.info('[Image Studio] retry with minimal prompt (no palette refs on first attempt)')
             setResultImage(
-              await runNano(buildFacadePromptMinimalMulti(selectedColors) + refSuffix + extra, nanoOptsMainOnly)
+              await runNano(buildFacadePromptMinimalMulti(selectedColors) + refSuffixNoRefs + extra, nanoOptsMainOnly)
             )
           }
         }
       } catch (e) {
-        setImageError(e instanceof Error ? e.message : 'Failed to apply facade')
+        const message = e instanceof Error ? e.message : 'Failed to apply facade'
+        console.error('[Image Studio] generation failed (final)', {
+          message,
+          stack: e instanceof Error ? e.stack : undefined,
+          error: e,
+        })
+        setImageError(message)
       } finally {
         setImageProcessing(false)
       }
@@ -957,7 +988,7 @@ export default function App() {
             resultImage={resultImage}
             isProcessing={imageProcessing}
             selectedColors={selectedColors}
-            previewCaptureRef={imageStudioPreviewRef}
+            mainCaptureRef={imageStudioMainCaptureRef}
             onRemovePaletteColorBySku={removePaletteColorBySku}
           />
         )}

@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Alubond Color Studio</title>
-    <!-- Start landing video download before JS bundle (reduces black screen on slow hosts) -->
-    <link rel="preload" href="/videos/preview.mp4" as="video" type="video/mp4" />
+    <!-- Warm video cache early (`as="video"` is not valid for rel=preload; prefetch avoids the console warning). -->
+    <link rel="prefetch" href="/videos/preview.mp4" />
   </head>
   <body>
     <div id="root"></div>

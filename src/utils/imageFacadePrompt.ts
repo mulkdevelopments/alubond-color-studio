@@ -1,5 +1,6 @@
 import { getFinishLabel } from '../data/palettes'
 import type { AlubondColor } from '../types'
+import { colorUsesPanelTextureRefs } from './paletteReferenceImages'
 
 /** Reduce odd Unicode, control chars, and symbols that some image APIs mishandle. */
 export function sanitizePromptFragment(text: string, maxLen: number): string {
@@ -82,6 +83,23 @@ export function buildFacadePromptMulti(colors: AlubondColor[]): string {
   )
 }
 
+/**
+ * Image Studio → NanoBanana: base multi-finish prompt plus explicit solid-colour instructions when no texture sheet is sent for those swatches.
+ */
+export function buildImageStudioFacadePrompt(colors: AlubondColor[]): string {
+  const base = buildFacadePromptMulti(colors)
+  const solids = colors.filter((c) => !colorUsesPanelTextureRefs(c))
+  if (solids.length === 0) return base
+  const solidLines = solids.map(
+    (c) =>
+      `${sanitizePromptFragment(c.name, 72)} (${sanitizePromptFragment(c.hex.startsWith('#') ? c.hex : `#${c.hex}`, 14)}, SKU ${sanitizePromptFragment(c.sku, 48)})`
+  )
+  return (
+    base +
+    ` SOLID / UNIFORM FINISHES (no separate product texture image for these—use exact name, hex, and SKU on the façade): ${solidLines.join('; ')}. `
+  )
+}
+
 export function buildFacadePromptMinimalMulti(colors: AlubondColor[]): string {
   if (colors.length === 0) return buildFacadePromptMinimal(null)
   if (colors.length === 1) return buildFacadePromptMinimal(colors[0])
@@ -99,17 +117,20 @@ export function buildFacadePromptMinimalMulti(colors: AlubondColor[]): string {
 }
 
 /**
- * Explain workspace capture + strict output framing: refs column must not appear in the generated image.
+ * Image Studio: image 1 = client building only; images 2+ = catalogue panel textures (when present). Solids rely on text.
  */
-export function buildFacadeReferenceImageSuffix(hasTexturePanelReferences: boolean): string {
-  if (!hasTexturePanelReferences) return ''
+export function buildFacadeReferenceImageSuffix(texturePanelImageCount: number): string {
+  const refBlock =
+    texturePanelImageCount > 0
+      ? `Images 2 through ${texturePanelImageCount + 1} are official Alubond panel texture files from our library—reproduce colour, gloss, grain, pattern, and patina on the building exactly as each sample appears. `
+      : ''
   return (
-    ' INPUT: (1) Main image: the real building with a narrow Alubond reference strip on the right when present. ' +
-    '(2) Additional image(s): enlarged sheet(s) of the exact same Alubond panel texture files—use these as the primary guide for colour, gloss, grain, and patina. ' +
-    'Reference imagery is NOT part of the site or architecture. ' +
-    ' OUTPUT (CRITICAL): Produce a single final photograph or render that shows ONLY the building with cladding applied. ' +
-    'Do NOT include the reference strip, swatches, sample tiles, or any "refs" / "Alubond refs" text in the output. ' +
-    'Crop mentally to the building: the result must look like a normal professional façade photo—same building, full bleed, no sidebar. ' +
-    'For fusion finishes, alternate or blend across the building panel grid only. Photorealistic, daylight, clear sky.'
+    ' INPUT: Image 1 is always the client’s building photograph only—this is the façade to clad; do not treat any UI from our app as part of the scene. ' +
+    refBlock +
+    'Solid/uniform colours are defined in the prompt text when no texture image exists for them—match those names and hex values precisely. ' +
+    'Reference panel images are not architecture—they are material targets only. ' +
+    ' OUTPUT (CRITICAL): A single photorealistic image of ONLY the same building with the selected Alubond finishes applied. ' +
+    'No swatches, sample boards, sidebars, or “refs” labels in the output. Same geometry and windows; professional façade photo, daylight, clear sky. ' +
+    'For fusion finishes, follow the panel rhythm on the existing façade grid.'
   )
 }

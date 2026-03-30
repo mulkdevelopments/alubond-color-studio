@@ -4,6 +4,9 @@ import { getPanelTextureUrl } from './panelTextureUrl'
 
 /** Max panel/swatch refs to attach (API allows many; keep payload reasonable). */
 const MAX_PALETTE_REFS = 8
+
+/** NanoBanana generate-2 allows up to 14 images; we reserve image 1 for the client building photo. */
+export const NANO_MAX_PALETTE_REF_IMAGES = 13
 const REF_JPEG_MAX_SIDE = 512
 const REF_JPEG_QUALITY = 0.86
 
@@ -150,6 +153,28 @@ export async function buildPaletteReferenceItemsMulti(colors: AlubondColor[]): P
     for (const u of batch) {
       out.push({ url: u, sku: color.sku, name: color.name })
       if (out.length >= MAX_PALETTE_REFS) return out
+    }
+  }
+  return out
+}
+
+/**
+ * Panel texture JPEGs for Image Studio → NanoBanana: ordered by selection, deduped by URL, max 13 (14 images with main photo).
+ * Skips solid colours (no panel PNGs).
+ */
+export async function buildPaletteTextureDataUrlsForNano(
+  colors: AlubondColor[],
+  maxRefs = NANO_MAX_PALETTE_REF_IMAGES
+): Promise<string[]> {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const color of colors) {
+    const batch = await buildPaletteReferenceDataUrls(color)
+    for (const u of batch) {
+      if (seen.has(u)) continue
+      seen.add(u)
+      out.push(u)
+      if (out.length >= maxRefs) return out
     }
   }
   return out
